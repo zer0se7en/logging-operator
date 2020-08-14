@@ -2047,6 +2047,12 @@ spec:
                       format: int32
                       type: integer
                   type: object
+                lokiOutput:
+                  description: LokiOutput for generic Loki config
+                  properties:
+                    URL:
+                      type: string
+                  type: object
                 metrics:
                   description: Metrics defines the service monitor endpoints
                   properties:

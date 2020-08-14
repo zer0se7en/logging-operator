@@ -65,6 +65,7 @@ type FluentbitSpec struct {
 	LivenessProbe        *corev1.Probe           `json:"livenessProbe,omitempty"`
 	LivenessDefaultCheck bool                    `json:"livenessDefaultCheck,omitempty"`
 	ReadinessProbe       *corev1.Probe           `json:"readinessProbe,omitempty"`
+	LokiOutput           *LokiOutput             `json:"lokiOutput,omitempty"`
 }
 
 // +kubebuilder:object:generate=true
@@ -74,6 +75,11 @@ type FluentbitTLS struct {
 	Enabled    bool   `json:"enabled"`
 	SecretName string `json:"secretName,omitempty"`
 	SharedKey  string `json:"sharedKey,omitempty"`
+}
+
+// LokiOutput for generic Loki config
+type LokiOutput struct {
+	URL string `json:"URL,omitempty"`
 }
 
 // GetPrometheusPortFromAnnotation gets the port value from annotation

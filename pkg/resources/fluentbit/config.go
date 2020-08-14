@@ -81,4 +81,16 @@ var fluentBitConfigTemplate = `
     {{- end }}
     {{- end }}
     Retry_Limit   False
+
+{{ with .LokiOutput }}
+[OUTPUT]
+    Name loki
+    Match *
+    Url {{ .URL }}
+    BatchWait 1s
+    BatchSize 1001024
+    LineFormat json
+    LogLevel info
+    AutoKubernetesLabels true
+{{- end }}
 `

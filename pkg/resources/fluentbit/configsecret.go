@@ -21,6 +21,7 @@ import (
 
 	"emperror.dev/errors"
 	"github.com/banzaicloud/logging-operator/pkg/resources/fluentd"
+	"github.com/banzaicloud/logging-operator/pkg/sdk/api/v1beta1"
 	"github.com/banzaicloud/logging-operator/pkg/sdk/model/types"
 	"github.com/banzaicloud/operator-tools/pkg/reconciler"
 	corev1 "k8s.io/api/core/v1"
@@ -50,6 +51,7 @@ type fluentBitConfig struct {
 	KubernetesFilter map[string]string
 	AwsFilter        map[string]string
 	BufferStorage    map[string]string
+	LokiOutput       v1beta1.LokiOutput
 }
 
 func (r *Reconciler) configSecret() (runtime.Object, reconciler.DesiredState, error) {
@@ -120,6 +122,7 @@ func (r *Reconciler) configSecret() (runtime.Object, reconciler.DesiredState, er
 		Input:            fluentbitInput,
 		KubernetesFilter: fluentbitKubernetesFilter,
 		BufferStorage:    fluentbitBufferStorage,
+		LokiOutput:       *r.Logging.Spec.FluentbitSpec.LokiOutput,
 	}
 	if r.Logging.Spec.FluentbitSpec.FilterAws != nil {
 		awsFilter, err := mapper.StringsMap(r.Logging.Spec.FluentbitSpec.FilterAws)
