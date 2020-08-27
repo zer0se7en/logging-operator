@@ -92,5 +92,11 @@ var fluentBitConfigTemplate = `
     LineFormat json
     LogLevel info
     AutoKubernetesLabels true
+    Buffer true
+    BufferType dque
+    DqueSegmentSize 8096
+    DqueSync normal
+    DqueDir /tmp/flb-storage/buffer
+    DqueName loki.0
 {{- end }}
 `
