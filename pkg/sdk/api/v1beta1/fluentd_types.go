@@ -45,29 +45,30 @@ type FluentdSpec struct {
 	// +docLink:"volume.KubernetesVolume,https://github.com/banzaicloud/operator-tools/tree/master/docs/types"
 	BufferStorageVolume volume.KubernetesVolume `json:"bufferStorageVolume,omitempty"`
 	// Deprecated, use bufferStorageVolume
-	FluentdPvcSpec          *volume.KubernetesVolume    `json:"fluentdPvcSpec,omitempty"`
-	VolumeMountChmod        bool                        `json:"volumeMountChmod,omitempty"`
-	VolumeModImage          ImageSpec                   `json:"volumeModImage,omitempty"`
-	ConfigReloaderImage     ImageSpec                   `json:"configReloaderImage,omitempty"`
-	Resources               corev1.ResourceRequirements `json:"resources,omitempty"`
-	ConfigCheckResources    corev1.ResourceRequirements `json:"configCheckResources,omitempty"`
-	ConfigReloaderResources corev1.ResourceRequirements `json:"configReloaderResources,omitempty"`
-	LivenessProbe           *corev1.Probe               `json:"livenessProbe,omitempty"`
-	LivenessDefaultCheck    bool                        `json:"livenessDefaultCheck,omitempty"`
-	ReadinessProbe          *corev1.Probe               `json:"readinessProbe,omitempty"`
-	ReadinessDefaultCheck   ReadinessDefaultCheck       `json:"readinessDefaultCheck,omitempty"`
-	Port                    int32                       `json:"port,omitempty"`
-	Tolerations             []corev1.Toleration         `json:"tolerations,omitempty"`
-	NodeSelector            map[string]string           `json:"nodeSelector,omitempty"`
-	Affinity                *corev1.Affinity            `json:"affinity,omitempty"`
-	Metrics                 *Metrics                    `json:"metrics,omitempty"`
-	BufferVolumeMetrics     *Metrics                    `json:"bufferVolumeMetrics,omitempty"`
-	BufferVolumeImage       ImageSpec                   `json:"bufferVolumeImage,omitempty"`
-	BufferVolumeArgs        []string                    `json:"bufferVolumeArgs,omitempty"`
-	Security                *Security                   `json:"security,omitempty"`
-	Scaling                 *FluentdScaling             `json:"scaling,omitempty"`
-	Workers                 int32                       `json:"workers,omitempty"`
-	RootDir                 string                      `json:"rootDir,omitempty"`
+	FluentdPvcSpec            *volume.KubernetesVolume          `json:"fluentdPvcSpec,omitempty"`
+	VolumeMountChmod          bool                              `json:"volumeMountChmod,omitempty"`
+	VolumeModImage            ImageSpec                         `json:"volumeModImage,omitempty"`
+	ConfigReloaderImage       ImageSpec                         `json:"configReloaderImage,omitempty"`
+	Resources                 corev1.ResourceRequirements       `json:"resources,omitempty"`
+	ConfigCheckResources      corev1.ResourceRequirements       `json:"configCheckResources,omitempty"`
+	ConfigReloaderResources   corev1.ResourceRequirements       `json:"configReloaderResources,omitempty"`
+	LivenessProbe             *corev1.Probe                     `json:"livenessProbe,omitempty"`
+	LivenessDefaultCheck      bool                              `json:"livenessDefaultCheck,omitempty"`
+	ReadinessProbe            *corev1.Probe                     `json:"readinessProbe,omitempty"`
+	ReadinessDefaultCheck     ReadinessDefaultCheck             `json:"readinessDefaultCheck,omitempty"`
+	Port                      int32                             `json:"port,omitempty"`
+	Tolerations               []corev1.Toleration               `json:"tolerations,omitempty"`
+	NodeSelector              map[string]string                 `json:"nodeSelector,omitempty"`
+	Affinity                  *corev1.Affinity                  `json:"affinity,omitempty"`
+	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+	Metrics                   *Metrics                          `json:"metrics,omitempty"`
+	BufferVolumeMetrics       *Metrics                          `json:"bufferVolumeMetrics,omitempty"`
+	BufferVolumeImage         ImageSpec                         `json:"bufferVolumeImage,omitempty"`
+	BufferVolumeArgs          []string                          `json:"bufferVolumeArgs,omitempty"`
+	Security                  *Security                         `json:"security,omitempty"`
+	Scaling                   *FluentdScaling                   `json:"scaling,omitempty"`
+	Workers                   int32                             `json:"workers,omitempty"`
+	RootDir                   string                            `json:"rootDir,omitempty"`
 	// +kubebuilder:validation:enum=fatal,error,warn,info,debug,trace
 	LogLevel string `json:"logLevel,omitempty"`
 	// Ignore same log lines
@@ -80,11 +81,13 @@ type FluentdSpec struct {
 	// +kubebuilder:validation:enum=stdout,null
 	FluentLogDestination string `json:"fluentLogDestination,omitempty"`
 	// FluentOutLogrotate sends fluent's stdout to file and rotates it
-	FluentOutLogrotate      *FluentOutLogrotate          `json:"fluentOutLogrotate,omitempty"`
-	ForwardInputConfig      *input.ForwardInputConfig    `json:"forwardInputConfig,omitempty"`
-	ServiceAccountOverrides *typeoverride.ServiceAccount `json:"serviceAccount,omitempty"`
-	DNSPolicy               corev1.DNSPolicy             `json:"dnsPolicy,omitempty"`
-	DNSConfig               *corev1.PodDNSConfig         `json:"dnsConfig,omitempty"`
+	FluentOutLogrotate          *FluentOutLogrotate          `json:"fluentOutLogrotate,omitempty"`
+	ForwardInputConfig          *input.ForwardInputConfig    `json:"forwardInputConfig,omitempty"`
+	ServiceAccountOverrides     *typeoverride.ServiceAccount `json:"serviceAccount,omitempty"`
+	DNSPolicy                   corev1.DNSPolicy             `json:"dnsPolicy,omitempty"`
+	DNSConfig                   *corev1.PodDNSConfig         `json:"dnsConfig,omitempty"`
+	ServiceTopologyKeys         []string                     `json:"serviceTopologyKeys,omitempty"`
+	HeadlessServiceTopologyKeys []string                     `json:"headlessServiceTopologyKeys,omitempty"`
 }
 
 // +kubebuilder:object:generate=true

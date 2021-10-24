@@ -997,6 +997,13 @@ func (in *FluentdSpec) DeepCopyInto(out *FluentdSpec) {
 		*out = new(v1.Affinity)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.TopologySpreadConstraints != nil {
+		in, out := &in.TopologySpreadConstraints, &out.TopologySpreadConstraints
+		*out = make([]v1.TopologySpreadConstraint, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.Metrics != nil {
 		in, out := &in.Metrics, &out.Metrics
 		*out = new(Metrics)
@@ -1042,6 +1049,16 @@ func (in *FluentdSpec) DeepCopyInto(out *FluentdSpec) {
 		in, out := &in.DNSConfig, &out.DNSConfig
 		*out = new(v1.PodDNSConfig)
 		(*in).DeepCopyInto(*out)
+	}
+	if in.ServiceTopologyKeys != nil {
+		in, out := &in.ServiceTopologyKeys, &out.ServiceTopologyKeys
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.HeadlessServiceTopologyKeys != nil {
+		in, out := &in.HeadlessServiceTopologyKeys, &out.HeadlessServiceTopologyKeys
+		*out = make([]string, len(*in))
+		copy(*out, *in)
 	}
 }
 
