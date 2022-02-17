@@ -20,7 +20,7 @@ import (
 	"emperror.dev/errors"
 	"github.com/banzaicloud/logging-operator/pkg/resources"
 	"github.com/banzaicloud/logging-operator/pkg/resources/fluentddataprovider"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/api/v1beta1"
+	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
 	"github.com/banzaicloud/operator-tools/pkg/merge"
 	"github.com/banzaicloud/operator-tools/pkg/reconciler"
 	"github.com/banzaicloud/operator-tools/pkg/typeoverride"
@@ -61,7 +61,7 @@ func NodeAgentFluentbitDefaults(userDefined **v1beta1.NodeAgent) (*v1beta1.NodeA
 							Containers: []v1.Container{
 								{
 									Name:            containerName,
-									Image:           "fluent/fluent-bit:1.8.8",
+									Image:           "fluent/fluent-bit:1.8.12",
 									Command:         []string{"/fluent-bit/bin/fluent-bit", "-c", "/fluent-bit/conf_operator/fluent-bit.conf"},
 									ImagePullPolicy: v1.PullIfNotPresent,
 									Resources: v1.ResourceRequirements{

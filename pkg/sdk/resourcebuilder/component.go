@@ -19,7 +19,9 @@ import (
 	"io/ioutil"
 
 	"emperror.dev/errors"
-	loggingv1beta1 "github.com/banzaicloud/logging-operator/pkg/sdk/api/v1beta1"
+	extensionsv1alpha1 "github.com/banzaicloud/logging-operator/pkg/sdk/extensions/api/v1alpha1"
+	extensionsconfig "github.com/banzaicloud/logging-operator/pkg/sdk/extensions/extensionsconfig"
+	loggingv1beta1 "github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
 	"github.com/banzaicloud/logging-operator/pkg/sdk/static/gen/crds"
 	"github.com/banzaicloud/logging-operator/pkg/sdk/static/gen/rbac"
 	"github.com/banzaicloud/operator-tools/pkg/reconciler"
@@ -46,7 +48,7 @@ import (
 )
 
 const (
-	Image            = "ghcr.io/banzaicloud/logging-operator:3.15.0"
+	Image            = "ghcr.io/banzaicloud/logging-operator:3.17.1"
 	defaultNamespace = "logging-system"
 )
 
@@ -122,6 +124,12 @@ func AppendCRDResourceBuilders(rbs []reconciler.ResourceBuilder, modifiers ...CR
 		},
 		func() (runtime.Object, reconciler.DesiredState, error) {
 			return CRD(loggingv1beta1.GroupVersion.Group, "clusteroutputs", modifiers...)
+		},
+		func() (runtime.Object, reconciler.DesiredState, error) {
+			return CRD(extensionsv1alpha1.GroupVersion.Group, "hosttailers", modifiers...)
+		},
+		func() (runtime.Object, reconciler.DesiredState, error) {
+			return CRD(extensionsv1alpha1.GroupVersion.Group, "eventtailers", modifiers...)
 		},
 	)
 }
@@ -433,7 +441,7 @@ func WebhookService(parent reconciler.ResourceOwner, config ComponentConfig) (ru
 	svc.Spec = corev1.ServiceSpec{
 		Ports: []corev1.ServicePort{
 			{
-				Name:       "conversion-webhook",
+				Name:       "logging-webhooks",
 				Port:       DefaultSecurePort,
 				TargetPort: intstr.IntOrString{IntVal: DefaultWebhookPort},
 				Protocol:   corev1.ProtocolTCP,
@@ -535,7 +543,7 @@ func MutatingWebhookConfiguration(parent reconciler.ResourceOwner, config Compon
 			AdmissionReviewVersions: []string{"v1"},
 		}
 
-		webhooks = append(webhooks, webhook)
+		webhooks = append(webhooks, webhook, ExtensionsMutatingWebhook(parent, config))
 	}
 
 	mutatingWebhookConfiguration := &admissionregistration.MutatingWebhookConfiguration{
@@ -567,4 +575,37 @@ func OperatorArgs(config ComponentConfig) (args []string) {
 		args = append(args, "--watch-logging-name", config.WatchLoggingName)
 	}
 	return
+}
+
+func ExtensionsMutatingWebhook(parent reconciler.ResourceOwner, config ComponentConfig) admissionregistration.MutatingWebhook {
+	scope := admissionregistration.AllScopes
+	failurePolicy := admissionregistration.Ignore
+	sideEffects := admissionregistration.SideEffectClassNone
+
+	return admissionregistration.MutatingWebhook{
+		Name: "logging-extensions.banzaicloud.io",
+		ClientConfig: admissionregistration.WebhookClientConfig{
+			Service: &admissionregistration.ServiceReference{
+				Name:      parent.GetName() + WebhookNameAffix,
+				Namespace: config.Namespace,
+				Path:      utils.StringPointer(extensionsconfig.TailerWebhook.ServerPath),
+			},
+		},
+		Rules: []admissionregistration.RuleWithOperations{
+			{
+				Operations: []admissionregistration.OperationType{
+					admissionregistration.Create,
+				},
+				Rule: admissionregistration.Rule{
+					APIGroups:   []string{corev1.SchemeGroupVersion.Group},
+					APIVersions: []string{corev1.SchemeGroupVersion.Version},
+					Resources:   []string{"pods"},
+					Scope:       &scope,
+				},
+			},
+		},
+		FailurePolicy:           &failurePolicy,
+		SideEffects:             &sideEffects,
+		AdmissionReviewVersions: []string{"v1"},
+	}
 }

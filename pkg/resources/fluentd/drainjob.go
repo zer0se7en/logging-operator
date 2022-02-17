@@ -17,7 +17,7 @@ package fluentd
 import (
 	"strings"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/api/v1beta1"
+	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -74,6 +74,11 @@ func (r *Reconciler) drainerJobFor(pvc corev1.PersistentVolumeClaim) (*batchv1.J
 			},
 		},
 	})
+	for _, n := range r.Logging.Spec.FluentdSpec.ExtraVolumes {
+		if err := n.ApplyVolumeForPodSpec(&spec.Template.Spec); err != nil {
+			return nil, err
+		}
+	}
 	return &batchv1.Job{
 		ObjectMeta: r.FluentdObjectMeta(StatefulSetName+pvc.Name[strings.LastIndex(pvc.Name, "-"):]+"-drainer", ComponentDrainer),
 		Spec:       spec,

@@ -55,6 +55,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -501,6 +503,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -653,6 +657,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -834,6 +840,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -978,6 +986,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -1409,6 +1419,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -1509,6 +1521,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -1869,6 +1883,8 @@ spec:
                     type: boolean
                   tls_version:
                     type: string
+                  transport:
+                    type: string
                   verify_connection_at_startup:
                     type: boolean
                 required:
@@ -1895,6 +1911,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -2144,6 +2162,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -2401,6 +2421,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -2865,6 +2887,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -2975,6 +2999,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -3059,6 +3085,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -3183,6 +3211,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -3588,6 +3618,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -3711,6 +3743,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -3932,6 +3966,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -4121,6 +4157,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -4493,6 +4531,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -4580,6 +4620,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -4713,6 +4755,8 @@ spec:
                 type: object
               syslog:
                 properties:
+                  allow_self_signed_cert:
+                    type: boolean
                   buffer:
                     properties:
                       chunk_full_threshold:
@@ -4726,6 +4770,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -4780,6 +4826,41 @@ spec:
                       type:
                         type: string
                     type: object
+                  client_cert_path:
+                    properties:
+                      mountFrom:
+                        properties:
+                          secretKeyRef:
+                            properties:
+                              key:
+                                type: string
+                              name:
+                                type: string
+                              optional:
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                        type: object
+                      value:
+                        type: string
+                      valueFrom:
+                        properties:
+                          secretKeyRef:
+                            properties:
+                              key:
+                                type: string
+                              name:
+                                type: string
+                              optional:
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                        type: object
+                    type: object
+                  enable_system_cert_store:
+                    type: boolean
                   format:
                     properties:
                       app_name_field:
@@ -4807,12 +4888,80 @@ spec:
                         - single_value
                         type: string
                     type: object
+                  fqdn:
+                    type: string
                   host:
                     type: string
                   insecure:
                     type: boolean
                   port:
                     type: integer
+                  private_key_passphrase:
+                    properties:
+                      mountFrom:
+                        properties:
+                          secretKeyRef:
+                            properties:
+                              key:
+                                type: string
+                              name:
+                                type: string
+                              optional:
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                        type: object
+                      value:
+                        type: string
+                      valueFrom:
+                        properties:
+                          secretKeyRef:
+                            properties:
+                              key:
+                                type: string
+                              name:
+                                type: string
+                              optional:
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                        type: object
+                    type: object
+                  private_key_path:
+                    properties:
+                      mountFrom:
+                        properties:
+                          secretKeyRef:
+                            properties:
+                              key:
+                                type: string
+                              name:
+                                type: string
+                              optional:
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                        type: object
+                      value:
+                        type: string
+                      valueFrom:
+                        properties:
+                          secretKeyRef:
+                            properties:
+                              key:
+                                type: string
+                              name:
+                                type: string
+                              optional:
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                        type: object
+                    type: object
                   transport:
                     type: string
                   trusted_ca_path:
@@ -4848,6 +4997,10 @@ spec:
                             type: object
                         type: object
                     type: object
+                  verify_fqdn:
+                    type: boolean
+                  version:
+                    type: string
                 required:
                 - host
                 type: object
@@ -4907,6 +5060,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -5353,6 +5508,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -5505,6 +5662,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -5686,6 +5845,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -5830,6 +5991,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -6261,6 +6424,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -6361,6 +6526,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -6721,6 +6888,8 @@ spec:
                     type: boolean
                   tls_version:
                     type: string
+                  transport:
+                    type: string
                   verify_connection_at_startup:
                     type: boolean
                 required:
@@ -6747,6 +6916,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -6996,6 +7167,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -7253,6 +7426,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -7717,6 +7892,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -7827,6 +8004,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -7911,6 +8090,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -8035,6 +8216,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -8440,6 +8623,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -8563,6 +8748,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -8784,6 +8971,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -8973,6 +9162,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -9345,6 +9536,8 @@ spec:
                         type: string
                       disable_chunk_backup:
                         type: boolean
+                      disabled:
+                        type: boolean
                       flush_at_shutdown:
                         type: boolean
                       flush_interval:
@@ -9432,6 +9625,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -9565,6 +9760,8 @@ spec:
                 type: object
               syslog:
                 properties:
+                  allow_self_signed_cert:
+                    type: boolean
                   buffer:
                     properties:
                       chunk_full_threshold:
@@ -9578,6 +9775,8 @@ spec:
                       delayed_commit_timeout:
                         type: string
                       disable_chunk_backup:
+                        type: boolean
+                      disabled:
                         type: boolean
                       flush_at_shutdown:
                         type: boolean
@@ -9632,6 +9831,41 @@ spec:
                       type:
                         type: string
                     type: object
+                  client_cert_path:
+                    properties:
+                      mountFrom:
+                        properties:
+                          secretKeyRef:
+                            properties:
+                              key:
+                                type: string
+                              name:
+                                type: string
+                              optional:
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                        type: object
+                      value:
+                        type: string
+                      valueFrom:
+                        properties:
+                          secretKeyRef:
+                            properties:
+                              key:
+                                type: string
+                              name:
+                                type: string
+                              optional:
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                        type: object
+                    type: object
+                  enable_system_cert_store:
+                    type: boolean
                   format:
                     properties:
                       app_name_field:
@@ -9659,12 +9893,80 @@ spec:
                         - single_value
                         type: string
                     type: object
+                  fqdn:
+                    type: string
                   host:
                     type: string
                   insecure:
                     type: boolean
                   port:
                     type: integer
+                  private_key_passphrase:
+                    properties:
+                      mountFrom:
+                        properties:
+                          secretKeyRef:
+                            properties:
+                              key:
+                                type: string
+                              name:
+                                type: string
+                              optional:
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                        type: object
+                      value:
+                        type: string
+                      valueFrom:
+                        properties:
+                          secretKeyRef:
+                            properties:
+                              key:
+                                type: string
+                              name:
+                                type: string
+                              optional:
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                        type: object
+                    type: object
+                  private_key_path:
+                    properties:
+                      mountFrom:
+                        properties:
+                          secretKeyRef:
+                            properties:
+                              key:
+                                type: string
+                              name:
+                                type: string
+                              optional:
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                        type: object
+                      value:
+                        type: string
+                      valueFrom:
+                        properties:
+                          secretKeyRef:
+                            properties:
+                              key:
+                                type: string
+                              name:
+                                type: string
+                              optional:
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                        type: object
+                    type: object
                   transport:
                     type: string
                   trusted_ca_path:
@@ -9700,6 +10002,10 @@ spec:
                             type: object
                         type: object
                     type: object
+                  verify_fqdn:
+                    type: boolean
+                  version:
+                    type: string
                 required:
                 - host
                 type: object

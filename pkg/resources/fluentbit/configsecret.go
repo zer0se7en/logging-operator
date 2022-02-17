@@ -22,7 +22,7 @@ import (
 
 	"emperror.dev/errors"
 	"github.com/banzaicloud/logging-operator/pkg/resources/fluentd"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/model/types"
+	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
 	"github.com/banzaicloud/operator-tools/pkg/reconciler"
 	"github.com/banzaicloud/operator-tools/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
@@ -31,8 +31,9 @@ import (
 )
 
 type fluentbitInputConfig struct {
-	Values  map[string]string
-	ParserN []string
+	Values          map[string]string
+	ParserN         []string
+	MultilineParser []string
 }
 
 type upstreamNode struct {
@@ -70,14 +71,21 @@ type fluentBitConfig struct {
 	AwsFilter               map[string]string
 	BufferStorage           map[string]string
 	Network                 struct {
-		ConnectTimeoutSet       bool
-		ConnectTimeout          uint32
-		Keepalive               bool
-		KeepaliveSet            bool
-		KeepaliveIdleTimeout    uint32
-		KeepaliveIdleTimeoutSet bool
-		KeepaliveMaxRecycle     uint32
-		KeepaliveMaxRecycleSet  bool
+		ConnectTimeoutSet         bool
+		ConnectTimeout            uint32
+		ConnectTimeoutLogErrorSet bool
+		ConnectTimeoutLogError    bool
+		DNSMode                   string
+		DNSPreferIPV4Set          bool
+		DNSPreferIPV4             bool
+		DNSResolver               string
+		KeepaliveSet              bool
+		Keepalive                 bool
+		KeepaliveIdleTimeoutSet   bool
+		KeepaliveIdleTimeout      uint32
+		KeepaliveMaxRecycleSet    bool
+		KeepaliveMaxRecycle       uint32
+		SourceAddress             string
 	}
 	ForwardOptions map[string]string
 	Upstream       struct {
@@ -114,15 +122,50 @@ func (r *Reconciler) configSecret() (runtime.Object, reconciler.DesiredState, er
 		}
 	}
 
+	var fluentbitTargetHost string
+	if r.Logging.Spec.FluentdSpec != nil && r.Logging.Spec.FluentbitSpec.TargetHost == "" {
+		fluentbitTargetHost = fmt.Sprintf("%s.%s.svc.cluster.local", r.Logging.QualifiedName(fluentd.ServiceName), r.Logging.Spec.ControlNamespace)
+	} else {
+		fluentbitTargetHost = r.Logging.Spec.FluentbitSpec.TargetHost
+	}
+
+	var fluentbitTargetPort int32
+	if r.Logging.Spec.FluentdSpec != nil && r.Logging.Spec.FluentbitSpec.TargetPort == 0 {
+		fluentbitTargetPort = r.Logging.Spec.FluentdSpec.Port
+	} else {
+		fluentbitTargetPort = r.Logging.Spec.FluentbitSpec.TargetPort
+	}
+
 	mapper := types.NewStructToStringMapper(nil)
 
 	// FluentBit input Values
 	fluentbitInput := fluentbitInputConfig{}
 	inputTail := r.Logging.Spec.FluentbitSpec.InputTail
-	if len(inputTail.ParserN) > 0 {
-		fluentbitInput.ParserN = r.Logging.Spec.FluentbitSpec.InputTail.ParserN
+
+	if len(inputTail.MultilineParser) > 0 {
+		fluentbitInput.MultilineParser = inputTail.MultilineParser
+		inputTail.MultilineParser = nil
+
+		// If MultilineParser is set, remove other parser fields
+		// See https://docs.fluentbit.io/manual/pipeline/inputs/tail#multiline-core-v1.8
+
+		log.Log.Info("Notice: MultilineParser is enabled. Disabling other parser options",
+			"logging", r.Logging.Name)
+
+		inputTail.Parser = ""
+		inputTail.ParserFirstline = ""
+		inputTail.ParserN = nil
+		inputTail.Multiline = ""
+		inputTail.MultilineFlush = ""
+		inputTail.DockerMode = ""
+		inputTail.DockerModeFlush = ""
+		inputTail.DockerModeParser = ""
+
+	} else if len(inputTail.ParserN) > 0 {
+		fluentbitInput.ParserN = inputTail.ParserN
 		inputTail.ParserN = nil
 	}
+
 	fluentbitInputValues, err := mapper.StringsMap(inputTail)
 	if err != nil {
 		return nil, reconciler.StatePresent, errors.WrapIf(err, "failed to map container tailer config for fluentbit")
@@ -164,8 +207,8 @@ func (r *Reconciler) configSecret() (runtime.Object, reconciler.DesiredState, er
 			SharedKey: r.Logging.Spec.FluentbitSpec.TLS.SharedKey,
 		},
 		Monitor:                 monitor,
-		TargetHost:              fmt.Sprintf("%s.%s.svc", r.Logging.QualifiedName(fluentd.ServiceName), r.Logging.Spec.ControlNamespace),
-		TargetPort:              r.Logging.Spec.FluentdSpec.Port,
+		TargetHost:              fluentbitTargetHost,
+		TargetPort:              fluentbitTargetPort,
 		Input:                   fluentbitInput,
 		DisableKubernetesFilter: disableKubernetesFilter,
 		KubernetesFilter:        fluentbitKubernetesFilter,
@@ -198,6 +241,24 @@ func (r *Reconciler) configSecret() (runtime.Object, reconciler.DesiredState, er
 			input.Network.ConnectTimeout = *r.Logging.Spec.FluentbitSpec.Network.ConnectTimeout
 		}
 
+		if r.Logging.Spec.FluentbitSpec.Network.ConnectTimeoutLogError != nil {
+			input.Network.ConnectTimeoutLogErrorSet = true
+			input.Network.ConnectTimeoutLogError = *r.Logging.Spec.FluentbitSpec.Network.ConnectTimeoutLogError
+		}
+
+		if r.Logging.Spec.FluentbitSpec.Network.DNSMode != "" {
+			input.Network.DNSMode = r.Logging.Spec.FluentbitSpec.Network.DNSMode
+		}
+
+		if r.Logging.Spec.FluentbitSpec.Network.DNSPreferIPV4 != nil {
+			input.Network.DNSPreferIPV4Set = true
+			input.Network.DNSPreferIPV4 = *r.Logging.Spec.FluentbitSpec.Network.DNSPreferIPV4
+		}
+
+		if r.Logging.Spec.FluentbitSpec.Network.DNSResolver != "" {
+			input.Network.DNSResolver = r.Logging.Spec.FluentbitSpec.Network.DNSResolver
+		}
+
 		if r.Logging.Spec.FluentbitSpec.Network.Keepalive != nil {
 			input.Network.KeepaliveSet = true
 			input.Network.Keepalive = *r.Logging.Spec.FluentbitSpec.Network.Keepalive
@@ -211,6 +272,10 @@ func (r *Reconciler) configSecret() (runtime.Object, reconciler.DesiredState, er
 		if r.Logging.Spec.FluentbitSpec.Network.KeepaliveMaxRecycle != nil {
 			input.Network.KeepaliveMaxRecycleSet = true
 			input.Network.KeepaliveMaxRecycle = *r.Logging.Spec.FluentbitSpec.Network.KeepaliveMaxRecycle
+		}
+
+		if r.Logging.Spec.FluentbitSpec.Network.SourceAddress != "" {
+			input.Network.SourceAddress = r.Logging.Spec.FluentbitSpec.Network.SourceAddress
 		}
 	}
 

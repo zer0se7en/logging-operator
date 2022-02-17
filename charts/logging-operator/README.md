@@ -46,28 +46,28 @@ The command removes all Kubernetes components associated with the chart and dele
 
 The following tables lists the configurable parameters of the logging-operator chart and their default values.
 
-|                      Parameter                      |                        Description                     |             Default            |
-| --------------------------------------------------- | ------------------------------------------------------ | ------------------------------ |
-| `image.repository`                                  | Container image repository                             | `ghcr.io/banzaicloud/logging-operator` |
-| `image.tag`                                         | Container image tag                                    | `3.15.0`                        |
-| `image.pullPolicy`                                  | Container pull policy                                  | `IfNotPresent`                 |
-| `nameOverride`                                      | Override name of app                                   | ``                             |
-| `fullnameOverride`                                  | Override full name of app                              | ``                             |
-| `namespaceOverride`                                 | Override namespace of app                              | ``                             |
-| `watchNamespace`                                    | Namespace to watch for LoggingOperator CRD             | ``                             |
-| `rbac.enabled`                                      | Create rbac service account and roles                  | `true`                         |
-| `rbac.psp.enabled`                                  | Must be used with `rbac.enabled` true. If true, creates & uses RBAC resources required in the cluster with [Pod Security Policies](https://kubernetes.io/docs/concepts/policy/pod-security-policy/) enabled.    | `false`                        |
-| `priorityClassName`                                 | Operator priorityClassName                             | `{}`                           |
-| `affinity`                                          | Node Affinity                                          | `{}`                           |
-| `resources`                                         | CPU/Memory resource requests/limits                    | `{}`                           |
-| `tolerations`                                       | Node Tolerations                                       | `[]`                           |
-| `nodeSelector`                                      | Define which Nodes the Pods are scheduled on.          | `{}`                           |
-| `podLabels`                                         | Define custom labels for logging-operator pods         | `{}`                           |
-| `annotations`                                       | Define annotations for logging-operator pods           | `{}`                           |
-| `podSecurityContext`                                | Pod SecurityContext for Logging operator. [More info](https://kubernetes.io/docs/concepts/policy/security-context/)                                                                                             | `{"runAsNonRoot": true, "runAsUser": 1000, "fsGroup": 2000}` |
+|                      Parameter                      |                        Description                     | Default                                                               |
+| --------------------------------------------------- | ------------------------------------------------------ |-----------------------------------------------------------------------|
+| `image.repository`                                  | Container image repository                             | `ghcr.io/banzaicloud/logging-operator`                                |
+| `image.tag`                                         | Container image tag                                    | `3.17.1`                                                              |
+| `image.pullPolicy`                                  | Container pull policy                                  | `IfNotPresent`                                                        |
+| `nameOverride`                                      | Override name of app                                   | ``                                                                    |
+| `fullnameOverride`                                  | Override full name of app                              | ``                                                                    |
+| `namespaceOverride`                                 | Override namespace of app                              | ``                                                                    |
+| `watchNamespace`                                    | Namespace to watch for LoggingOperator CRD             | ``                                                                    |
+| `rbac.enabled`                                      | Create rbac service account and roles                  | `true`                                                                |
+| `rbac.psp.enabled`                                  | Must be used with `rbac.enabled` true. If true, creates & uses RBAC resources required in the cluster with [Pod Security Policies](https://kubernetes.io/docs/concepts/policy/pod-security-policy/) enabled.    | `false`                                                               |
+| `priorityClassName`                                 | Operator priorityClassName                             | `{}`                                                                  |
+| `affinity`                                          | Node Affinity                                          | `{}`                                                                  |
+| `resources`                                         | CPU/Memory resource requests/limits                    | `{}`                                                                  |
+| `tolerations`                                       | Node Tolerations                                       | `[]`                                                                  |
+| `nodeSelector`                                      | Define which Nodes the Pods are scheduled on.          | `{}`                                                                  |
+| `podLabels`                                         | Define custom labels for logging-operator pods         | `{}`                                                                  |
+| `annotations`                                       | Define annotations for logging-operator pods           | `{}`                                                                  |
+| `podSecurityContext`                                | Pod SecurityContext for Logging operator. [More info](https://kubernetes.io/docs/concepts/policy/security-context/)                                                                                             | `{"runAsNonRoot": true, "runAsUser": 1000, "fsGroup": 2000}`          |
 | `securityContext`                                   | Container SecurityContext for Logging operator. [More info](https://kubernetes.io/docs/concepts/policy/security-context/) | `{"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true}` |
-| `createCustomResource`                              | Create CRDs. | `true` |
-| `monitoring.serviceMonitor.enabled`                 | Create Prometheus Operator servicemonitor. | `false` |
+| `createCustomResource`                              | Create CRDs. | `true`                                                                |
+| `monitoring.serviceMonitor.enabled`                 | Create Prometheus Operator servicemonitor. | `false`                                                               |
 
 Alternatively, a YAML file that specifies the values for the parameters can be provided while installing the chart. For example:
 
@@ -104,27 +104,27 @@ $ helm install banzaicloud-stable/logging-operator-logging
 
 The following tables lists the configurable parameters of the logging-operator-logging chart and their default values.
 
-|                      Parameter                      |                        Description                     |             Default            |
-| --------------------------------------------------- | ------------------------------------------------------ | ------------------------------ |
-| `tls.enabled`                                       | Enabled TLS communication between components           | true                           |
+|                      Parameter                      |                        Description                     | Default                                                   |
+| --------------------------------------------------- | ------------------------------------------------------ |-----------------------------------------------------------|
+| `tls.enabled`                                       | Enabled TLS communication between components           | true                                                      |
 | `tls.fluentdSecretName`                                    | Specified secret name, which contain tls certs         | This will overwrite automatic Helm certificate generation. |
 | `tls.fluentbitSecretName`                                    | Specified secret name, which contain tls certs         | This will overwrite automatic Helm certificate generation. |
-| `tls.sharedKey`                                     | Shared key between nodes (fluentd-fluentbit)           | [autogenerated]                |
-| `fluentbit.enabled`                                 | Install fluent-bit                                     | true                           |
-| `fluentbit.namespace`                               | Specified fluentbit installation namespace             | same as operator namespace     |
-| `fluentbit.image.tag`                               | Fluentbit container image tag                          | `1.8.8`                        |
-| `fluentbit.image.repository`                        | Fluentbit container image repository                   | `fluent/fluent-bit`            |
-| `fluentbit.image.pullPolicy`                        | Fluentbit container pull policy                        | `IfNotPresent`                 |
-| `fluentd.enabled`                                   | Install fluentd                                        | true                           |
-| `fluentd.image.tag`                                 | Fluentd container image tag                            | `v1.13.3-alpine-11`            |
-| `fluentd.image.repository`                          | Fluentd container image repository                     | `ghcr.io/banzaicloud/fluentd`  |
-| `fluentd.image.pullPolicy`                          | Fluentd container pull policy                          | `IfNotPresent`                 |
-| `fluentd.volumeModImage.tag`                        | Fluentd volumeModImage container image tag             | `latest`                       |
-| `fluentd.volumeModImage.repository`                 | Fluentd volumeModImage container image repository      | `busybox`                      |
-| `fluentd.volumeModImage.pullPolicy`                 | Fluentd volumeModImage container pull policy           | `IfNotPresent`                 |
-| `fluentd.configReloaderImage.tag`                   | Fluentd configReloaderImage container image tag        | `v0.2.2`                       |
-| `fluentd.configReloaderImage.repository`            | Fluentd configReloaderImage container image repository | `jimmidyson/configmap-reload`  |
-| `fluentd.configReloaderImage.pullPolicy`            | Fluentd configReloaderImage container pull policy      | `IfNotPresent`                 |
-| `fluentd.fluentdPvcSpec.accessModes`                | Fluentd persistence volume access modes                | `[ReadWriteOnce]`              |
-| `fluentd.fluentdPvcSpec.resources.requests.storage` | Fluentd persistence volume size                        | `21Gi`                         |
-| `fluentd.fluentdPvcSpec.storageClassName`           | Fluentd persistence volume storageclass                | `"""`                          |
+| `tls.sharedKey`                                     | Shared key between nodes (fluentd-fluentbit)           | [autogenerated]                                           |
+| `fluentbit.enabled`                                 | Install fluent-bit                                     | true                                                      |
+| `fluentbit.namespace`                               | Specified fluentbit installation namespace             | same as operator namespace                                |
+| `fluentbit.image.tag`                               | Fluentbit container image tag                          | `1.8.12`                                                  |
+| `fluentbit.image.repository`                        | Fluentbit container image repository                   | `fluent/fluent-bit`                                       |
+| `fluentbit.image.pullPolicy`                        | Fluentbit container pull policy                        | `IfNotPresent`                                            |
+| `fluentd.enabled`                                   | Install fluentd                                        | true                                                      |
+| `fluentd.image.tag`                                 | Fluentd container image tag                            | `v1.14.4-alpine-2`                                        |
+| `fluentd.image.repository`                          | Fluentd container image repository                     | `ghcr.io/banzaicloud/fluentd`                             |
+| `fluentd.image.pullPolicy`                          | Fluentd container pull policy                          | `IfNotPresent`                                            |
+| `fluentd.volumeModImage.tag`                        | Fluentd volumeModImage container image tag             | `latest`                                                  |
+| `fluentd.volumeModImage.repository`                 | Fluentd volumeModImage container image repository      | `busybox`                                                 |
+| `fluentd.volumeModImage.pullPolicy`                 | Fluentd volumeModImage container pull policy           | `IfNotPresent`                                            |
+| `fluentd.configReloaderImage.tag`                   | Fluentd configReloaderImage container image tag        | `v0.2.2`                                                  |
+| `fluentd.configReloaderImage.repository`            | Fluentd configReloaderImage container image repository | `jimmidyson/configmap-reload`                             |
+| `fluentd.configReloaderImage.pullPolicy`            | Fluentd configReloaderImage container pull policy      | `IfNotPresent`                                            |
+| `fluentd.fluentdPvcSpec.accessModes`                | Fluentd persistence volume access modes                | `[ReadWriteOnce]`                                         |
+| `fluentd.fluentdPvcSpec.resources.requests.storage` | Fluentd persistence volume size                        | `21Gi`                                                    |
+| `fluentd.fluentdPvcSpec.storageClassName`           | Fluentd persistence volume storageclass                | `"""`                                                     |

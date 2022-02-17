@@ -17,7 +17,7 @@ package fluentd
 import (
 	"fmt"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/api/v1beta1"
+	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
 	"github.com/banzaicloud/operator-tools/pkg/reconciler"
 	util "github.com/banzaicloud/operator-tools/pkg/utils"
 	"github.com/spf13/cast"
@@ -43,6 +43,11 @@ func (r *Reconciler) statefulset() (runtime.Object, reconciler.DesiredState, err
 	} else {
 		err := r.Logging.Spec.FluentdSpec.BufferStorageVolume.ApplyVolumeForPodSpec(v1beta1.DefaultFluentdBufferStorageVolumeName, containerName, bufferPath, &spec.Template.Spec)
 		if err != nil {
+			return nil, reconciler.StatePresent, err
+		}
+	}
+	for _, n := range r.Logging.Spec.FluentdSpec.ExtraVolumes {
+		if err := n.ApplyVolumeForPodSpec(&spec.Template.Spec); err != nil {
 			return nil, reconciler.StatePresent, err
 		}
 	}
