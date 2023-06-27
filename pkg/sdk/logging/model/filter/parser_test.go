@@ -17,9 +17,9 @@ package filter_test
 import (
 	"testing"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/filter"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/render"
 	"github.com/ghodss/yaml"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/filter"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/render"
 	"github.com/stretchr/testify/require"
 )
 
@@ -120,6 +120,75 @@ parse:
     format4 /  Rendered (?<template>[^ ]+) within (?<layout>.+) \([\d\.]+ms\)\n/
     format5 /Completed (?<code>[^ ]+) [^ ]+ in (?<runtime>[\d\.]+)ms \(Views: (?<view_runtime>[\d\.]+)ms \| ActiveRecord: (?<ar_runtime>[\d\.]+)ms\)/
     format_firstline /^Started/
+  </parse>
+</filter>
+`
+	parser := &filter.ParserConfig{}
+	require.NoError(t, yaml.Unmarshal(CONFIG, parser))
+	test := render.NewOutputPluginTest(t, parser)
+	test.DiffResult(expected)
+}
+
+func TestParserGrokSingleParser(t *testing.T) {
+	CONFIG := []byte(`
+remove_key_name_field: true
+reserve_data: true
+parse:
+  type: grok
+  grok_failure_key: grokFailure
+  grok_pattern: "%{GREEDYDATA:grokMessage}"
+`)
+
+	expected := `
+<filter **>
+  @type parser
+  @id test
+  key_name message
+  remove_key_name_field true
+  reserve_data true
+  <parse>
+    @type grok
+    grok_failure_key grokFailure
+    grok_pattern %{GREEDYDATA:grokMessage}
+  </parse>
+</filter>
+`
+	parser := &filter.ParserConfig{}
+	require.NoError(t, yaml.Unmarshal(CONFIG, parser))
+	test := render.NewOutputPluginTest(t, parser)
+	test.DiffResult(expected)
+}
+
+func TestParserGrokMultiParser(t *testing.T) {
+	CONFIG := []byte(`
+remove_key_name_field: true
+reserve_data: true
+parse:
+  type: grok
+  grok_failure_key: grokFailure
+  grok_patterns:
+    - pattern: "%{GREEDYDATA:firstMessage}"
+    - pattern: "%{GREEDYDATA:secondMessage}"
+`)
+
+	expected := `
+<filter **>
+  @type parser
+  @id test
+  key_name message
+  remove_key_name_field true
+  reserve_data true
+  <parse>
+    @type grok
+    grok_failure_key grokFailure
+    <grok>
+      pattern %{GREEDYDATA:firstMessage}
+      time_key time
+    </grok>
+    <grok>
+      pattern %{GREEDYDATA:secondMessage}
+      time_key time
+    </grok>    
   </parse>
 </filter>
 `

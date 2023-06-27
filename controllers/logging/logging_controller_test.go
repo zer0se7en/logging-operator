@@ -25,12 +25,8 @@ import (
 	"emperror.dev/errors"
 	"github.com/MakeNowJust/heredoc"
 	"github.com/andreyvit/diff"
-	controllers "github.com/banzaicloud/logging-operator/controllers/logging"
-	"github.com/banzaicloud/logging-operator/pkg/resources/fluentd"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/output"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
-	"github.com/banzaicloud/operator-tools/pkg/utils"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/utils"
 	"github.com/onsi/gomega"
 	"github.com/pborman/uuid"
 	appsv1 "k8s.io/api/apps/v1"
@@ -43,6 +39,11 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	controllers "github.com/kube-logging/logging-operator/controllers/logging"
+	"github.com/kube-logging/logging-operator/pkg/resources/fluentd"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/output"
 )
 
 var (
@@ -446,7 +447,7 @@ func TestSingleFlowDefaultLoggingRefInvalidOutputRef(t *testing.T) {
 	defer ensureCreated(t, logging)()
 	defer ensureCreated(t, flow)()
 
-	expected := "referenced output not found: test-output-nonexistent"
+	expected := fmt.Sprintf("referenced output test-output-nonexistent not found for flow %s/test-flow", testNamespace)
 	expectError(t, expected, errors)
 }
 
@@ -1217,8 +1218,8 @@ func ensureCreatedEventually(t *testing.T, ns, name string, obj runtime.Object) 
 		t.Fatalf("unable to cast runtime.Object to client.Object")
 	}
 
-	err := wait.Poll(time.Second, time.Second*3, func() (bool, error) {
-		err := mgr.GetClient().Get(context.TODO(), types.NamespacedName{
+	err := wait.PollUntilContextTimeout(context.TODO(), time.Second, time.Second*3, false, func(ctx context.Context) (bool, error) {
+		err := mgr.GetClient().Get(ctx, types.NamespacedName{
 			Name: name, Namespace: ns,
 		}, object)
 		if apierrors.IsNotFound(err) {
@@ -1238,7 +1239,7 @@ func ensureCreatedEventually(t *testing.T, ns, name string, obj runtime.Object) 
 }
 
 func expectError(t *testing.T, expected string, reconcilerErrors <-chan error) {
-	err := wait.Poll(time.Second, time.Second*3, func() (bool, error) {
+	err := wait.PollUntilContextTimeout(context.TODO(), time.Second, time.Second*3, false, func(ctx context.Context) (bool, error) {
 		select {
 		case err := <-reconcilerErrors:
 			if !strings.Contains(err.Error(), expected) {

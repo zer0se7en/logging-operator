@@ -18,8 +18,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/utils"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"Amazon S3"
@@ -27,30 +28,32 @@ import (
 type _hugoS3 interface{} //nolint:deadcode,unused
 
 // +docName:"Amazon S3 plugin for Fluentd"
-//**s3** output plugin buffers event logs in local file and upload it to S3 periodically. This plugin splits files exactly by using the time of event logs (not the time when the logs are received). For example, a log '2011-01-02 message B' is reached, and then another log '2011-01-03 message B' is reached in this order, the former one is stored in "20110102.gz" file, and latter one in "20110103.gz" file.
-//>Example: [S3 Output Deployment](../../../../quickstarts/example-s3/)
+// **s3** output plugin buffers event logs in local file and upload it to S3 periodically. This plugin splits files exactly by using the time of event logs (not the time when the logs are received). For example, a log '2011-01-02 message B' is reached, and then another log '2011-01-03 message B' is reached in this order, the former one is stored in "20110102.gz" file, and latter one in "20110103.gz" file.
+// >Example: [S3 Output Deployment](../../../../quickstarts/example-s3/)
 //
-// #### Example output configurations
-// ```
+// ## Example output configurations
+// ```yaml
 // spec:
-//  s3:
-//    aws_key_id:
-//      valueFrom:
-//        secretKeyRef:
-//          name: logging-s3
-//          key: awsAccessKeyId
-//    aws_sec_key:
-//      valueFrom:
-//        secretKeyRef:
-//          name: logging-s3
-//          key: awsSecretAccessKey
-//    s3_bucket: logging-amazon-s3
-//    s3_region: eu-central-1
-//    path: logs/${tag}/%Y/%m/%d/
-//    buffer:
-//      timekey: 10m
-//      timekey_wait: 30s
-//      timekey_use_utc: true*/
+//
+//	s3:
+//	  aws_key_id:
+//	    valueFrom:
+//	      secretKeyRef:
+//	        name: logging-s3
+//	        key: awsAccessKeyId
+//	  aws_sec_key:
+//	    valueFrom:
+//	      secretKeyRef:
+//	        name: logging-s3
+//	        key: awsSecretAccessKey
+//	  s3_bucket: logging-amazon-s3
+//	  s3_region: eu-central-1
+//	  path: logs/${tag}/%Y/%m/%d/
+//	  buffer:
+//	    timekey: 10m
+//	    timekey_wait: 30s
+//	    timekey_use_utc: true
+//
 // ```
 type _docS3 interface{} //nolint:deadcode,unused
 
@@ -62,9 +65,9 @@ type _docS3 interface{} //nolint:deadcode,unused
 type _metaS3 interface{} //nolint:deadcode,unused
 
 const (
-	OneEyeTags            string = "tag,time,$.kubernetes.namespace_name,$.kubernetes.pod_name,$.kubernetes.container_name"
 	OneEyePathTemplate    string = "%v/%%Y/%%m/%%d/${$.kubernetes.namespace_name}/${$.kubernetes.pod_name}/${$.kubernetes.container_name}/"
 	OneEyeObjectKeyFormat string = "%{path}%H:%M_%{index}.%{file_extension}"
+	OneEyeTags            string = "tag,time,$.kubernetes.namespace_name,$.kubernetes.pod_name,$.kubernetes.container_name"
 )
 
 // +kubebuilder:object:generate=true
@@ -140,12 +143,17 @@ type S3OutputConfig struct {
 	S3Bucket string `json:"s3_bucket"`
 	// Archive format on S3
 	StoreAs string `json:"store_as,omitempty"`
-	// The type of storage to use for the object(STANDARD,REDUCED_REDUNDANCY,STANDARD_IA)
+	// The type of storage to use for the object, for example STANDARD, REDUCED_REDUNDANCY, STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING, GLACIER, DEEP_ARCHIVE, OUTPOSTS, GLACIER_IR
+	// For a complete list of possible values, see the [Amazon S3 API reference](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html#AmazonS3-PutObject-request-header-StorageClass).
 	StorageClass string `json:"storage_class,omitempty"`
 	// The number of attempts to load instance profile credentials from the EC2 metadata service using IAM role
 	AwsIamRetries string `json:"aws_iam_retries,omitempty"`
 	// +docLink:"Buffer,../buffer/"
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, fluentd logs warning message and increases metric fluentd_output_status_slow_flush_count.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
 	// +docLink:"Format,../format/"
 	Format *Format `json:"format,omitempty"`
 	// +docLink:"Assume Role Credentials,#assume-role-credentials"
@@ -233,6 +241,7 @@ func (c *S3OutputConfig) ToDirective(secretLoader secret.SecretLoader, id string
 		},
 	}
 	// Overwrite values when One Eye format is used
+
 	if c.OneEyeFormat {
 		clusterName := "one-eye"
 		if c.ClusterName != "" {
@@ -241,7 +250,7 @@ func (c *S3OutputConfig) ToDirective(secretLoader secret.SecretLoader, id string
 		if c.Buffer == nil {
 			c.Buffer = new(Buffer)
 		}
-		c.Buffer.Tags = OneEyeTags
+		c.Buffer.Tags = utils.StringPointer(OneEyeTags)
 		c.Path = fmt.Sprintf(OneEyePathTemplate, clusterName)
 		c.S3ObjectKeyFormat = OneEyeObjectKeyFormat
 	}

@@ -15,7 +15,7 @@
 package v1beta1
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/filter"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/filter"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -36,9 +36,11 @@ type FlowSpec struct {
 	Filters    []Filter          `json:"filters,omitempty"`
 	LoggingRef string            `json:"loggingRef,omitempty"`
 	// Deprecated
-	OutputRefs       []string `json:"outputRefs,omitempty"`
-	GlobalOutputRefs []string `json:"globalOutputRefs,omitempty"`
-	LocalOutputRefs  []string `json:"localOutputRefs,omitempty"`
+	OutputRefs           []string `json:"outputRefs,omitempty"`
+	GlobalOutputRefs     []string `json:"globalOutputRefs,omitempty"`
+	LocalOutputRefs      []string `json:"localOutputRefs,omitempty"`
+	FlowLabel            string   `json:"flowLabel,omitempty"`
+	IncludeLabelInRouter *bool    `json:"includeLabelInRouter,omitempty"`
 }
 
 type Match struct {
@@ -64,6 +66,7 @@ type Filter struct {
 	Parser              *filter.ParserConfig              `json:"parser,omitempty"`
 	TagNormaliser       *filter.TagNormaliser             `json:"tag_normaliser,omitempty"`
 	Dedot               *filter.DedotFilterConfig         `json:"dedot,omitempty"`
+	ElasticGenId        *filter.ElasticsearchGenId        `json:"elasticsearch_genid,omitempty"`
 	RecordTransformer   *filter.RecordTransformer         `json:"record_transformer,omitempty"`
 	RecordModifier      *filter.RecordModifier            `json:"record_modifier,omitempty"`
 	GeoIP               *filter.GeoIP                     `json:"geoip,omitempty"`

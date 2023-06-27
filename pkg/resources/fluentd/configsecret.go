@@ -20,7 +20,7 @@ import (
 	"html/template"
 
 	"emperror.dev/errors"
-	"github.com/banzaicloud/operator-tools/pkg/reconciler"
+	"github.com/cisco-open/operator-tools/pkg/reconciler"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -36,6 +36,7 @@ type fluentdConfig struct {
 	IgnoreRepeatedLogInterval string
 	Workers                   int32
 	RootDir                   string
+	EnableMsgpackTimeSupport  bool
 }
 
 func generateConfig(input fluentdConfig) (string, error) {
@@ -56,6 +57,7 @@ func (r *Reconciler) generateConfigSecret() (map[string][]byte, error) {
 		IgnoreSameLogInterval:     r.Logging.Spec.FluentdSpec.IgnoreSameLogInterval,
 		IgnoreRepeatedLogInterval: r.Logging.Spec.FluentdSpec.IgnoreRepeatedLogInterval,
 		RootDir:                   r.Logging.Spec.FluentdSpec.RootDir,
+		EnableMsgpackTimeSupport:  r.Logging.Spec.FluentdSpec.EnableMsgpackTimeSupport,
 	}
 
 	if r.Logging.Spec.FluentdSpec.Metrics != nil {

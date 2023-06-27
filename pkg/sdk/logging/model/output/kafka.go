@@ -15,8 +15,8 @@
 package output
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"Kafka"
@@ -24,29 +24,33 @@ import (
 type _hugoKafka interface{} //nolint:deadcode,unused
 
 // +docName:"Kafka output plugin for Fluentd"
-//  More info at https://github.com/fluent/fluent-plugin-kafka
-//>Example Deployment: [Transport Nginx Access Logs into Kafka with Logging Operator](../../../../quickstarts/kafka-nginx/)
 //
-// #### Example output configurations
-// ```
+//	More info at https://github.com/fluent/fluent-plugin-kafka
+//
+// >Example Deployment: [Transport Nginx Access Logs into Kafka with Logging Operator](../../../../quickstarts/kafka-nginx/)
+//
+// ## Example output configurations
+// ```yaml
 // spec:
-//   kafka:
-//     brokers: kafka-headless.kafka.svc.cluster.local:29092
-//     default_topic: topic
-//     sasl_over_ssl: false
-//     format:
-//       type: json
-//     buffer:
-//       tags: topic
-//       timekey: 1m
-//       timekey_wait: 30s
-//       timekey_use_utc: true
+//
+//	kafka:
+//	  brokers: kafka-headless.kafka.svc.cluster.local:29092
+//	  default_topic: topic
+//	  sasl_over_ssl: false
+//	  format:
+//	    type: json
+//	  buffer:
+//	    tags: topic
+//	    timekey: 1m
+//	    timekey_wait: 30s
+//	    timekey_use_utc: true
+//
 // ```
 type _docKafka interface{} //nolint:deadcode,unused
 
 // +name:"Kafka"
-// +url:"https://github.com/fluent/fluent-plugin-kafka/releases/tag/v0.17.3"
-// +version:"0.17.3"
+// +url:"https://github.com/fluent/fluent-plugin-kafka/releases/tag/v0.17.5"
+// +version:"0.17.5"
 // +description:"Send your logs to Kafka"
 // +status:"GA"
 type _metaKafka interface{} //nolint:deadcode,unused
@@ -90,7 +94,9 @@ type KafkaOutputConfig struct {
 	Idempotent bool `json:"idempotent,omitempty"`
 	// SASL over SSL (default: true)
 	// +kubebuilder:validation:Optional
-	SaslOverSSL bool `json:"sasl_over_ssl"`
+	SaslOverSSL bool           `json:"sasl_over_ssl"`
+	Principal   string         `json:"principal,omitempty"`
+	Keytab      *secret.Secret `json:"keytab,omitempty"`
 	// Username when using PLAIN/SCRAM SASL authentication
 	Username *secret.Secret `json:"username,omitempty"`
 	// Password when using PLAIN/SCRAM SASL authentication
@@ -127,6 +133,10 @@ type KafkaOutputConfig struct {
 	Format *Format `json:"format"`
 	// +docLink:"Buffer,../buffer/"
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, fluentd logs warning message and increases metric fluentd_output_status_slow_flush_count.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
 }
 
 func (e *KafkaOutputConfig) ToDirective(secretLoader secret.SecretLoader, id string) (types.Directive, error) {

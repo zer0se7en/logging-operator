@@ -17,7 +17,7 @@ package fluentd
 var fluentdConfigCheckTemplate = `
 # include other config files
 @include /fluentd/etc/input.conf
-@include /fluentd/etc/generated.conf
+@include /fluentd/app-config/*
 @include /fluentd/etc/devnull.conf
 @include /fluentd/etc/fluentlog.conf
 `
@@ -43,6 +43,9 @@ var fluentdInputTemplate = `
 {{- end }}
 {{- if .IgnoreSameLogInterval }}
   ignore_same_log_interval {{ .IgnoreSameLogInterval }}
+{{- end }}
+{{- if .EnableMsgpackTimeSupport }}
+  enable_msgpack_time_support true
 {{- end }}
 </system>
 

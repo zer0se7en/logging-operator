@@ -15,8 +15,8 @@
 package output
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"SumoLogic"
@@ -24,40 +24,45 @@ import (
 type _hugoSumoLogic interface{} //nolint:deadcode,unused
 
 // +docName:"SumoLogic output plugin for Fluentd"
-//This plugin has been designed to output logs or metrics to SumoLogic via a HTTP collector endpoint
-//More info at https://github.com/SumoLogic/fluentd-output-sumologic
+// This plugin has been designed to output logs or metrics to SumoLogic via a HTTP collector endpoint
+// More info at https://github.com/SumoLogic/fluentd-output-sumologic
 //
 // Example secret for HTTP input URL
 // ```
+// kubectl create secret generic sumo-output --from-literal "endpoint=$URL"
+// ```
+//
+// # Example ClusterOutput
+//
+// ```yaml
+// apiVersion: logging.banzaicloud.io/v1beta1
+// kind: ClusterOutput
+// metadata:
+//
+//	name: sumo-output
+//
+// spec:
+//
+//	sumologic:
+//	  buffer:
+//	    flush_interval: 10s
+//	    flush_mode: interval
+//	  compress: true
+//	  endpoint:
+//	    valueFrom:
+//	      secretKeyRef:
+//	        key: endpoint
+//	        name: sumo-output
+//	  source_name: test1
+//
+// ```
+//
 //export URL='https://endpoint1.collection.eu.sumologic.com/receiver/v1/http/.......'
-//kubectl create secret generic sumo-output --from-literal "endpoint=$URL"
-//```
-//
-// Example ClusterOutput
-//
-//```
-//apiVersion: logging.banzaicloud.io/v1beta1
-//kind: ClusterOutput
-//metadata:
-//  name: sumo-output
-//spec:
-//  sumologic:
-//    buffer:
-//      flush_interval: 10s
-//      flush_mode: interval
-//    compress: true
-//    endpoint:
-//      valueFrom:
-//        secretKeyRef:
-//          key: endpoint
-//          name: sumo-output
-//    source_name: test1
-//```
 type _docSumoLogic interface{} //nolint:deadcode,unused
 
 // +name:"SumoLogic"
-// +url:"https://github.com/SumoLogic/fluentd-output-sumologic/releases/tag/1.7.3"
-// +version:"1.7.3"
+// +url:"https://github.com/SumoLogic/fluentd-output-sumologic/releases/tag/1.8.0"
+// +version:"1.8.0"
 // +description:"Send your logs to Sumologic"
 // +status:"GA"
 type _metaSumologic interface{} //nolint:deadcode,unused
@@ -109,6 +114,10 @@ type SumologicOutput struct {
 	CustomDimensions string `json:"custom_dimensions,omitempty"`
 	// +docLink:"Buffer,../buffer/"
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, fluentd logs warning message and increases metric fluentd_output_status_slow_flush_count.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
 }
 
 func (s *SumologicOutput) ToDirective(secretLoader secret.SecretLoader, id string) (types.Directive, error) {

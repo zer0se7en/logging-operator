@@ -20,7 +20,9 @@ import (
 	"hash/fnv"
 
 	"emperror.dev/errors"
-	"github.com/banzaicloud/operator-tools/pkg/reconciler"
+	"github.com/cisco-open/operator-tools/pkg/reconciler"
+	"github.com/kube-logging/logging-operator/pkg/compression"
+	"github.com/kube-logging/logging-operator/pkg/resources/configcheck"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -36,7 +38,14 @@ type ConfigCheckResult struct {
 
 func (r *Reconciler) appConfigSecret() (runtime.Object, reconciler.DesiredState, error) {
 	data := make(map[string][]byte)
-	data[AppConfigKey] = []byte(*r.config)
+
+	if r.Logging.Spec.FluentdSpec.CompressConfigFile {
+		AppConfigKeyCompress := AppConfigKey + ".gz"
+		data[AppConfigKeyCompress] = compression.CompressString(*r.config, r.Log)
+	} else {
+		data[AppConfigKey] = []byte(*r.config)
+	}
+
 	return &corev1.Secret{
 		ObjectMeta: r.FluentdObjectMeta(AppSecretConfigName, ComponentFluentd),
 		Data:       data,
@@ -52,16 +61,47 @@ func (r *Reconciler) configHash() (string, error) {
 	return fmt.Sprintf("%x", hasher.Sum32()), nil
 }
 
-func (r *Reconciler) configCheck() (*ConfigCheckResult, error) {
+func (r *Reconciler) configCheck(ctx context.Context) (*ConfigCheckResult, error) {
 	hashKey, err := r.configHash()
 	if err != nil {
 		return nil, err
 	}
 
+	checkSecret, err := r.newCheckSecret(hashKey)
+	if err != nil {
+		return nil, err
+	}
+	configcheck.WithHashLabel(checkSecret, hashKey)
+	checkSecretAppConfig, err := r.newCheckSecretAppConfig(hashKey)
+	if err != nil {
+		return nil, err
+	}
+	configcheck.WithHashLabel(checkSecretAppConfig, hashKey)
+
+	err = r.Client.Create(ctx, checkSecret)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return nil, errors.WrapIf(err, "failed to create secret for fluentd configcheck")
+	}
+	err = r.Client.Create(ctx, checkSecretAppConfig)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return nil, errors.WrapIf(err, "failed to create secret with Generated for fluentd configcheck")
+	}
+
+	checkOutputSecret, err := r.newCheckOutputSecret(hashKey)
+	if err != nil {
+		return nil, err
+	}
+	configcheck.WithHashLabel(checkOutputSecret, hashKey)
+	err = r.Client.Create(ctx, checkOutputSecret)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return nil, errors.WrapIf(err, "failed to create output secret for fluentd configcheck")
+	}
+
 	pod := r.newCheckPod(hashKey)
+	configcheck.WithHashLabel(pod, hashKey)
 
 	existingPods := &corev1.PodList{}
-	err = r.Client.List(context.TODO(), existingPods, client.MatchingLabels(pod.Labels))
+	err = r.Client.List(ctx, existingPods, client.MatchingLabels(pod.Labels))
 	if err != nil {
 		return nil, errors.WrapIf(err, "failed to list existing configcheck pods")
 	}
@@ -84,7 +124,7 @@ func (r *Reconciler) configCheck() (*ConfigCheckResult, error) {
 		}, nil
 	}
 
-	err = r.Client.Get(context.TODO(), types.NamespacedName{Namespace: pod.Namespace, Name: pod.Name}, pod)
+	err = r.Client.Get(ctx, types.NamespacedName{Namespace: pod.Namespace, Name: pod.Name}, pod)
 	if err == nil {
 		// check pod status and write into the configmap
 		switch pod.Status.Phase {
@@ -113,25 +153,7 @@ func (r *Reconciler) configCheck() (*ConfigCheckResult, error) {
 		return nil, errors.WrapIff(err, "failed to get configcheck pod %s:%s", pod.Namespace, pod.Name)
 	}
 
-	checkSecret, err := r.newCheckSecret(hashKey)
-	if err != nil {
-		return nil, err
-	}
-	checkOutputSecret, err := r.newCheckOutputSecret(hashKey)
-	if err != nil {
-		return nil, err
-	}
-
-	err = r.Client.Create(context.TODO(), checkSecret)
-	if err != nil && !apierrors.IsAlreadyExists(err) {
-		return nil, errors.WrapIf(err, "failed to create secret for fluentd configcheck")
-	}
-	err = r.Client.Create(context.TODO(), checkOutputSecret)
-	if err != nil && !apierrors.IsAlreadyExists(err) {
-		return nil, errors.WrapIf(err, "failed to create output secret for fluentd configcheck")
-	}
-
-	err = r.Client.Create(context.TODO(), pod)
+	err = r.Client.Create(ctx, pod)
 	if err != nil {
 		return nil, errors.WrapIf(err, "failed to create pod for fluentd configcheck")
 	}
@@ -139,58 +161,35 @@ func (r *Reconciler) configCheck() (*ConfigCheckResult, error) {
 	return &ConfigCheckResult{}, nil
 }
 
-func (r *Reconciler) configCheckCleanup(currentHash string) (removedHashes []string, multierr error) {
-	for configHash := range r.Logging.Status.ConfigCheckResults {
-		if configHash == currentHash {
-			continue
-		}
-		newSecret, err := r.newCheckSecret(configHash)
-		if err != nil {
-			multierr = errors.Combine(multierr,
-				errors.Wrapf(err, "failed to create config check secret %s", configHash))
-			continue
-		}
-		if err := r.Client.Delete(context.TODO(), newSecret); err != nil {
-			if !apierrors.IsNotFound(err) {
-				multierr = errors.Combine(multierr,
-					errors.Wrapf(err, "failed to remove config check secret %s", configHash))
-				continue
-			}
-		}
-		checkOutputSecret, err := r.newCheckOutputSecret(configHash)
-		if err != nil {
-			multierr = errors.Combine(multierr,
-				errors.Wrapf(err, "failed to create config check output secret %s", configHash))
-			continue
-		}
-		if err := r.Client.Delete(context.TODO(), checkOutputSecret); err != nil {
-			if !apierrors.IsNotFound(err) {
-				multierr = errors.Combine(multierr,
-					errors.Wrapf(err, "failed to remove config check output secret %s", configHash))
-				continue
-			}
-		}
-		if err := r.Client.Delete(context.TODO(), r.newCheckPod(configHash)); err != nil {
-			if !apierrors.IsNotFound(err) {
-				multierr = errors.Combine(multierr,
-					errors.Wrapf(err, "failed to remove config check pod %s", configHash))
-				continue
-			}
-		}
-		removedHashes = append(removedHashes, configHash)
-	}
-	return
-}
-
 func (r *Reconciler) newCheckSecret(hashKey string) (*corev1.Secret, error) {
 	data, err := r.generateConfigSecret()
 	if err != nil {
 		return nil, err
 	}
-	data[ConfigCheckKey] = []byte(*r.config)
+	if r.Logging.Spec.FluentdSpec.CompressConfigFile {
+		ConfigCheckKeyCompress := ConfigCheckKey + ".gz"
+		data[ConfigCheckKeyCompress] = compression.CompressString(*r.config, r.Log)
+	} else {
+		data[ConfigCheckKey] = []byte(*r.config)
+	}
 	data["fluent.conf"] = []byte(fluentdConfigCheckTemplate)
 	return &corev1.Secret{
 		ObjectMeta: r.FluentdObjectMeta(fmt.Sprintf("fluentd-configcheck-%s", hashKey), ComponentConfigCheck),
+		Data:       data,
+	}, nil
+}
+
+func (r *Reconciler) newCheckSecretAppConfig(hashKey string) (*corev1.Secret, error) {
+	data := make(map[string][]byte)
+
+	if r.Logging.Spec.FluentdSpec.CompressConfigFile {
+		ConfigCheckKeyCompress := ConfigCheckKey + ".gz"
+		data[ConfigCheckKeyCompress] = compression.CompressString(*r.config, r.Log)
+	} else {
+		data[ConfigCheckKey] = []byte(*r.config)
+	}
+	return &corev1.Secret{
+		ObjectMeta: r.FluentdObjectMeta(fmt.Sprintf("fluentd-configcheck-app-%s", hashKey), ComponentConfigCheck),
 		Data:       data,
 	}, nil
 }
@@ -208,6 +207,11 @@ func (r *Reconciler) newCheckOutputSecret(hashKey string) (*corev1.Secret, error
 }
 
 func (r *Reconciler) newCheckPod(hashKey string) *corev1.Pod {
+
+	volumes := r.volumesCheckPod(hashKey)
+	container := r.containerCheckPod(hashKey)
+	initContainer := r.initContainerCheckPod()
+
 	pod := &corev1.Pod{
 		ObjectMeta: r.FluentdObjectMeta(fmt.Sprintf("fluentd-configcheck-%s", hashKey), ComponentConfigCheck),
 		Spec: corev1.PodSpec{
@@ -223,57 +227,10 @@ func (r *Reconciler) newCheckPod(hashKey string) *corev1.Pod {
 				RunAsUser:    r.Logging.Spec.FluentdSpec.Security.PodSecurityContext.RunAsUser,
 				RunAsGroup:   r.Logging.Spec.FluentdSpec.Security.PodSecurityContext.RunAsGroup,
 			},
-			Volumes: []corev1.Volume{
-				{
-					Name: "config",
-					VolumeSource: corev1.VolumeSource{
-						Secret: &corev1.SecretVolumeSource{
-							SecretName: r.Logging.QualifiedName(fmt.Sprintf("fluentd-configcheck-%s", hashKey)),
-						},
-					},
-				},
-				{
-					Name: "output-secret",
-					VolumeSource: corev1.VolumeSource{
-						Secret: &corev1.SecretVolumeSource{
-							SecretName: r.Logging.QualifiedName(fmt.Sprintf("fluentd-configcheck-output-%s", hashKey)),
-						},
-					},
-				},
-			},
+			Volumes:          volumes,
 			ImagePullSecrets: r.Logging.Spec.FluentdSpec.Image.ImagePullSecrets,
-			Containers: []corev1.Container{
-				{
-					Name:            "fluentd",
-					Image:           r.Logging.Spec.FluentdSpec.Image.RepositoryWithTag(),
-					ImagePullPolicy: corev1.PullPolicy(r.Logging.Spec.FluentdSpec.Image.PullPolicy),
-					Args: []string{
-						"fluentd", "-c",
-						fmt.Sprintf("/fluentd/etc/%s", ConfigKey),
-						"--dry-run",
-					},
-					VolumeMounts: []corev1.VolumeMount{
-						{
-							Name:      "config",
-							MountPath: "/fluentd/etc/",
-						},
-						{
-							Name:      "output-secret",
-							MountPath: OutputSecretPath,
-						},
-					},
-					SecurityContext: &corev1.SecurityContext{
-						RunAsUser:                r.Logging.Spec.FluentdSpec.Security.SecurityContext.RunAsUser,
-						RunAsGroup:               r.Logging.Spec.FluentdSpec.Security.SecurityContext.RunAsGroup,
-						ReadOnlyRootFilesystem:   r.Logging.Spec.FluentdSpec.Security.SecurityContext.ReadOnlyRootFilesystem,
-						AllowPrivilegeEscalation: r.Logging.Spec.FluentdSpec.Security.SecurityContext.AllowPrivilegeEscalation,
-						Privileged:               r.Logging.Spec.FluentdSpec.Security.SecurityContext.Privileged,
-						RunAsNonRoot:             r.Logging.Spec.FluentdSpec.Security.SecurityContext.RunAsNonRoot,
-						SELinuxOptions:           r.Logging.Spec.FluentdSpec.Security.SecurityContext.SELinuxOptions,
-					},
-					Resources: r.Logging.Spec.FluentdSpec.ConfigCheckResources,
-				},
-			},
+			InitContainers:   initContainer,
+			Containers:       container,
 		},
 	}
 	if r.Logging.Spec.FluentdSpec.ConfigCheckAnnotations != nil {
@@ -302,4 +259,132 @@ func (r *Reconciler) newCheckPod(hashKey string) *corev1.Pod {
 	}
 
 	return pod
+}
+
+func (r *Reconciler) volumesCheckPod(hashKey string) (v []corev1.Volume) {
+	v = []corev1.Volume{
+		{
+			Name: "config",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: r.Logging.QualifiedName(fmt.Sprintf("fluentd-configcheck-%s", hashKey)),
+				},
+			},
+		},
+		{
+			Name: "output-secret",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: r.Logging.QualifiedName(fmt.Sprintf("fluentd-configcheck-output-%s", hashKey)),
+				},
+			},
+		},
+	}
+
+	if r.Logging.Spec.FluentdSpec.CompressConfigFile {
+		v = append(v, corev1.Volume{
+			Name: "app-config",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		})
+		v = append(v, corev1.Volume{
+			Name: "app-config-compress",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: r.Logging.QualifiedName(fmt.Sprintf("fluentd-configcheck-app-%s", hashKey)),
+				},
+			},
+		})
+	} else {
+		v = append(v, corev1.Volume{
+			Name: "app-config",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: r.Logging.QualifiedName(fmt.Sprintf("fluentd-configcheck-app-%s", hashKey)),
+				},
+			},
+		})
+	}
+
+	return v
+}
+
+func (r *Reconciler) containerCheckPod(hashKey string) []corev1.Container {
+	containerArgs := []string{
+		"fluentd", "-c",
+		fmt.Sprintf("/fluentd/etc/%s", ConfigKey),
+		"--dry-run",
+	}
+	containerArgs = append(containerArgs, r.Logging.Spec.FluentdSpec.ExtraArgs...)
+
+	container := []corev1.Container{
+		{
+			Name:            "fluentd",
+			Image:           r.Logging.Spec.FluentdSpec.Image.RepositoryWithTag(),
+			ImagePullPolicy: corev1.PullPolicy(r.Logging.Spec.FluentdSpec.Image.PullPolicy),
+			Args:            containerArgs,
+			Env:             r.Logging.Spec.FluentdSpec.EnvVars,
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "config",
+					MountPath: "/fluentd/etc/",
+				},
+				{
+					Name:      "app-config",
+					MountPath: "/fluentd/app-config/",
+				},
+				{
+					Name:      "output-secret",
+					MountPath: OutputSecretPath,
+				},
+			},
+			SecurityContext: &corev1.SecurityContext{
+				RunAsUser:                r.Logging.Spec.FluentdSpec.Security.SecurityContext.RunAsUser,
+				RunAsGroup:               r.Logging.Spec.FluentdSpec.Security.SecurityContext.RunAsGroup,
+				ReadOnlyRootFilesystem:   r.Logging.Spec.FluentdSpec.Security.SecurityContext.ReadOnlyRootFilesystem,
+				AllowPrivilegeEscalation: r.Logging.Spec.FluentdSpec.Security.SecurityContext.AllowPrivilegeEscalation,
+				Privileged:               r.Logging.Spec.FluentdSpec.Security.SecurityContext.Privileged,
+				RunAsNonRoot:             r.Logging.Spec.FluentdSpec.Security.SecurityContext.RunAsNonRoot,
+				SELinuxOptions:           r.Logging.Spec.FluentdSpec.Security.SecurityContext.SELinuxOptions,
+			},
+			Resources: r.Logging.Spec.FluentdSpec.ConfigCheckResources,
+		},
+	}
+
+	return container
+}
+
+func (r *Reconciler) initContainerCheckPod() []corev1.Container {
+	var initContainer []corev1.Container
+	if r.Logging.Spec.FluentdSpec.CompressConfigFile {
+		initContainer = []corev1.Container{
+			{
+				Name:            "config-reloader",
+				Image:           r.Logging.Spec.FluentdSpec.ConfigReloaderImage.RepositoryWithTag(),
+				ImagePullPolicy: corev1.PullPolicy(r.Logging.Spec.FluentdSpec.Image.PullPolicy),
+				Resources:       r.Logging.Spec.FluentdSpec.ConfigReloaderResources,
+				Args: []string{
+					"--init-mode=true",
+					"--volume-dir-archive=/tmp/archive",
+					"--dir-for-unarchive=/fluentd/app-config",
+					"-webhook-url=http://127.0.0.1:24444/api/config.reload",
+				},
+				VolumeMounts: []corev1.VolumeMount{
+					{
+						Name:      "app-config",
+						MountPath: "/fluentd/app-config",
+					},
+					{
+						Name:      "app-config-compress",
+						MountPath: "/tmp/archive",
+					},
+				},
+			},
+		}
+	} else {
+		initContainer = []corev1.Container{}
+	}
+
+	return initContainer
 }

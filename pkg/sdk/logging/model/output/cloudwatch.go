@@ -15,8 +15,8 @@
 package output
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"Amazon CloudWatch"
@@ -24,31 +24,33 @@ import (
 type _hugoCloudWatch interface{} //nolint:deadcode,unused
 
 // +docName:"CloudWatch output plugin for Fluentd"
-//This plugin has been designed to output logs or metrics to Amazon CloudWatch.
-//More info at https://github.com/fluent-plugins-nursery/fluent-plugin-cloudwatch-logs
+// This plugin has been designed to output logs or metrics to Amazon CloudWatch.
+// More info at [https://github.com/fluent-plugins-nursery/fluent-plugin-cloudwatch-logs](https://github.com/fluent-plugins-nursery/fluent-plugin-cloudwatch-logs).
 //
-// #### Example output configurations
-// ```
+// ## Example output configurations
+// ```yaml
 // spec:
-//  cloudwatch:
-//    aws_key_id:
-//      valueFrom:
-//        secretKeyRef:
-//          name: logging-s3
-//          key: awsAccessKeyId
-//    aws_sec_key:
-//      valueFrom:
-//        secretKeyRef:
-//          name: logging-s3
-//          key: awsSecretAccessKey
-//    log_group_name: operator-log-group
-//    log_stream_name: operator-log-stream
-//    region: us-east-1
-//    auto_create_stream true
-//    buffer:
-//      timekey: 30s
-//      timekey_wait: 30s
-//      timekey_use_utc: true
+//
+//	cloudwatch:
+//	  aws_key_id:
+//	    valueFrom:
+//	      secretKeyRef:
+//	        name: logging-s3
+//	        key: awsAccessKeyId
+//	  aws_sec_key:
+//	    valueFrom:
+//	      secretKeyRef:
+//	        name: logging-s3
+//	        key: awsSecretAccessKey
+//	  log_group_name: operator-log-group
+//	  log_stream_name: operator-log-stream
+//	  region: us-east-1
+//	  auto_create_stream true
+//	  buffer:
+//	    timekey: 30s
+//	    timekey_wait: 30s
+//	    timekey_use_utc: true
+//
 // ```
 type _docCloudWatch interface{} //nolint:deadcode,unused
 
@@ -96,13 +98,13 @@ type CloudWatchOutput struct {
 	// Specified field of records as AWS tags for the log group
 	LogGroupAwsTagsKey string `json:"log_group_aws_tags_key,omitempty"`
 	// Name of log group to store logs
-	LogGroupName string `json:"log_group_name"`
+	LogGroupName string `json:"log_group_name,omitempty"`
 	// Specified field of records as log group name
 	LogGroupNameKey string `json:"log_group_name_key,omitempty"`
 	// Output rejected_log_events_info request log. (default: false)
 	LogRejectedRequest string `json:"log_rejected_request,omitempty"`
 	// Name of log stream to store logs
-	LogStreamName string `json:"log_stream_name"`
+	LogStreamName string `json:"log_stream_name,omitempty"`
 	// Specified field of records as log stream name
 	LogStreamNameKey string `json:"log_stream_name_key,omitempty"`
 	// Maximum number of events to send at once (default: 10000)
@@ -137,6 +139,10 @@ type CloudWatchOutput struct {
 	UseTagAsStream bool `json:"use_tag_as_stream,omitempty"`
 	// +docLink:"Buffer,../buffer/"
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, fluentd logs warning message and increases metric fluentd_output_status_slow_flush_count.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
 	// +docLink:"Format,../format/"
 	Format *Format `json:"format,omitempty"`
 }

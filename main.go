@@ -24,15 +24,6 @@ import (
 	"strings"
 
 	"emperror.dev/errors"
-	extensionsControllers "github.com/banzaicloud/logging-operator/controllers/extensions"
-	loggingControllers "github.com/banzaicloud/logging-operator/controllers/logging"
-	"github.com/banzaicloud/logging-operator/pkg/k8sutil"
-	extensionsv1alpha1 "github.com/banzaicloud/logging-operator/pkg/sdk/extensions/api/v1alpha1"
-	config "github.com/banzaicloud/logging-operator/pkg/sdk/extensions/extensionsconfig"
-	loggingv1alpha1 "github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1alpha1"
-	loggingv1beta1 "github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/logging-operator/pkg/webhook/podhandler"
 	prometheusOperator "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/spf13/cast"
 	appsv1 "k8s.io/api/apps/v1"
@@ -41,14 +32,26 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+
+	extensionsControllers "github.com/kube-logging/logging-operator/controllers/extensions"
+	loggingControllers "github.com/kube-logging/logging-operator/controllers/logging"
+	"github.com/kube-logging/logging-operator/pkg/resources"
+	extensionsv1alpha1 "github.com/kube-logging/logging-operator/pkg/sdk/extensions/api/v1alpha1"
+	config "github.com/kube-logging/logging-operator/pkg/sdk/extensions/extensionsconfig"
+	loggingv1alpha1 "github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1alpha1"
+	loggingv1beta1 "github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
+	"github.com/kube-logging/logging-operator/pkg/webhook/podhandler"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -71,6 +74,7 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var verboseLogging bool
+	var loggingOutputFormat string
 	var enableprofile bool
 	var namespace string
 	var loggingRef string
@@ -80,6 +84,7 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&verboseLogging, "verbose", false, "Enable verbose logging")
+	flag.StringVar(&loggingOutputFormat, "output-format", "", "Logging output format (json, console)")
 	flag.IntVar(&klogLevel, "klogLevel", 0, "Global log level for klog (0-9)")
 	flag.BoolVar(&enableprofile, "pprof", false, "Enable pprof")
 	flag.StringVar(&namespace, "watch-namespace", "", "Namespace to filter the list of watched objects")
@@ -90,7 +95,22 @@ func main() {
 
 	zapLogger := zap.New(func(o *zap.Options) {
 		o.Development = verboseLogging
+
+		switch loggingOutputFormat {
+		case "json":
+			encoder := zap.JSONEncoder()
+			encoder(o)
+		case "console":
+			encoder := zap.ConsoleEncoder()
+			encoder(o)
+		case "":
+			break
+		default:
+			fmt.Printf("invalid encoder value \"%s\"", loggingOutputFormat)
+			os.Exit(1)
+		}
 	})
+
 	ctrl.SetLogger(zapLogger)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -106,8 +126,20 @@ func main() {
 		MetricsBindAddress: metricsAddr,
 		LeaderElection:     enableLeaderElection,
 		LeaderElectionID:   "logging-operator." + loggingv1beta1.GroupVersion.Group,
-		MapperProvider:     k8sutil.NewCached,
-		Port:               9443,
+	}
+
+	if os.Getenv("ENABLE_WEBHOOKS") == "true" {
+		webhookServerOptions := webhook.Options{
+			Port: 9443,
+		}
+		if config.TailerWebhook.ServerPort != 0 {
+			webhookServerOptions.Port = config.TailerWebhook.ServerPort
+		}
+		if config.TailerWebhook.CertDir != "" {
+			webhookServerOptions.CertDir = config.TailerWebhook.CertDir
+		}
+		webhookServer := webhook.NewServer(webhookServerOptions)
+		mgrOptions.WebhookServer = webhookServer
 	}
 
 	customMgrOptions, err := setupCustomCache(&mgrOptions, namespace, loggingRef)
@@ -137,11 +169,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	loggingReconciler := loggingControllers.NewLoggingReconciler(mgr.GetClient(), ctrl.Log.WithName("controllers").WithName("Logging"))
+	if !PSPEnabled(mgr.GetConfig()) {
+		setupLog.Info("WARNING PodSecurityPolicies are disabled. Can be enabled manually with PSP_ENABLED=1")
+	}
+
+	loggingReconciler := loggingControllers.NewLoggingReconciler(mgr.GetClient(), ctrl.Log.WithName("logging"))
 
 	if err := (&extensionsControllers.EventTailerReconciler{
 		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("EventTailer"),
+		Log:    ctrl.Log.WithName("event-tailer"),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "EventTailer")
@@ -149,7 +185,7 @@ func main() {
 	}
 	if err := (&extensionsControllers.HostTailerReconciler{
 		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("HostTailer"),
+		Log:    ctrl.Log.WithName("host-tailer"),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "HostTailer")
@@ -174,16 +210,9 @@ func main() {
 		// Webhook server registration
 		setupLog.Info("Setting up webhook server...")
 		webhookServer := mgr.GetWebhookServer()
-		if config.TailerWebhook.ServerPort != 0 {
-			webhookServer.Port = config.TailerWebhook.ServerPort
-		}
-		if config.TailerWebhook.CertDir != "" {
-			webhookServer.CertDir = config.TailerWebhook.CertDir
-		}
 
 		setupLog.Info("Registering webhooks...")
 		webhookServer.Register(config.TailerWebhook.ServerPath, &webhook.Admission{Handler: podhandler.NewPodHandler(mgr.GetClient())})
-
 	}
 
 	// +kubebuilder:scaffold:builder
@@ -192,6 +221,27 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func PSPEnabled(cfg *rest.Config) bool {
+	pspenv := os.Getenv("PSP_ENABLED")
+	if pspenv != "" {
+		return cast.ToBool(pspenv)
+	}
+	dsc, err := discovery.NewDiscoveryClientForConfig(cfg)
+	if err != nil {
+		setupLog.Error(err, "discovery client creation")
+		os.Exit(1)
+	}
+	serverVersion, err := dsc.ServerVersion()
+	if err != nil {
+		setupLog.Error(err, "server version")
+		os.Exit(1)
+	}
+	if cast.ToInt(serverVersion.Major) == 1 && cast.ToInt(serverVersion.Minor) < 25 {
+		resources.PSPEnabled = true
+	}
+	return resources.PSPEnabled
 }
 
 func detectContainerRuntime(ctx context.Context, c client.Reader) error {
@@ -226,30 +276,30 @@ func setupCustomCache(mgrOptions *ctrl.Options, namespace string, loggingRef str
 		labelSelector = labels.Set{"app.kubernetes.io/managed-by": loggingRef}.AsSelector()
 	}
 
-	selectorsByObject := cache.SelectorsByObject{
-		&corev1.Pod{}: {
-			Field: namespaceSelector,
-			Label: labelSelector,
-		},
-		&appsv1.DaemonSet{}: {
-			Field: namespaceSelector,
-			Label: labelSelector,
-		},
-		&appsv1.StatefulSet{}: {
-			Field: namespaceSelector,
-			Label: labelSelector,
-		},
-		&appsv1.Deployment{}: {
-			Field: namespaceSelector,
-			Label: labelSelector,
-		},
-		&corev1.PersistentVolumeClaim{}: {
-			Field: namespaceSelector,
-			Label: labelSelector,
+	mgrOptions.Cache = cache.Options{
+		ByObject: map[client.Object]cache.ByObject{
+			&corev1.Pod{}: {
+				Field: namespaceSelector,
+				Label: labelSelector,
+			},
+			&appsv1.DaemonSet{}: {
+				Field: namespaceSelector,
+				Label: labelSelector,
+			},
+			&appsv1.StatefulSet{}: {
+				Field: namespaceSelector,
+				Label: labelSelector,
+			},
+			&appsv1.Deployment{}: {
+				Field: namespaceSelector,
+				Label: labelSelector,
+			},
+			&corev1.PersistentVolumeClaim{}: {
+				Field: namespaceSelector,
+				Label: labelSelector,
+			},
 		},
 	}
-
-	mgrOptions.NewCache = cache.BuilderWithOptions(cache.Options{SelectorsByObject: selectorsByObject})
 
 	return mgrOptions, nil
 }

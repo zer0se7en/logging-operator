@@ -1,4 +1,4 @@
-// Copyright © 2021 Banzai Cloud
+// Copyright © 2021 Cisco Systems, Inc. and/or its affiliates
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ package fluentd
 import (
 	"strings"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,6 +39,11 @@ func (r *Reconciler) drainerJobFor(pvc corev1.PersistentVolumeClaim) (*batchv1.J
 		containers = append(containers, *c)
 	}
 
+	var initContainers []corev1.Container
+	if i := generateInitContainer(r.Logging.Spec.FluentdSpec); i != nil {
+		initContainers = append(initContainers, *i)
+	}
+
 	spec := batchv1.JobSpec{
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
@@ -49,6 +54,7 @@ func (r *Reconciler) drainerJobFor(pvc corev1.PersistentVolumeClaim) (*batchv1.J
 				Volumes:                   r.generateVolume(),
 				ServiceAccountName:        r.getServiceAccount(),
 				ImagePullSecrets:          r.Logging.Spec.FluentdSpec.Image.ImagePullSecrets,
+				InitContainers:            initContainers,
 				Containers:                containers,
 				NodeSelector:              r.Logging.Spec.FluentdSpec.NodeSelector,
 				Tolerations:               r.Logging.Spec.FluentdSpec.Tolerations,

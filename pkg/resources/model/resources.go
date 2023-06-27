@@ -15,15 +15,29 @@
 package model
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
 )
 
 type LoggingResources struct {
-	Logging        v1beta1.Logging
-	Outputs        Outputs
-	Flows          []v1beta1.Flow
-	ClusterOutputs ClusterOutputs
+	Logging    v1beta1.Logging
+	Fluentd    FluentdLoggingResources
+	SyslogNG   SyslogNGLoggingResources
+	NodeAgents []v1beta1.NodeAgent
+	Fluentbits []v1beta1.FluentbitAgent
+}
+
+type FluentdLoggingResources struct {
 	ClusterFlows   []v1beta1.ClusterFlow
+	ClusterOutputs ClusterOutputs
+	Flows          []v1beta1.Flow
+	Outputs        Outputs
+}
+
+type SyslogNGLoggingResources struct {
+	ClusterFlows   []v1beta1.SyslogNGClusterFlow
+	ClusterOutputs SyslogNGClusterOutputs
+	Flows          []v1beta1.SyslogNGFlow
+	Outputs        SyslogNGOutputs
 }
 
 type ClusterOutputs []v1beta1.ClusterOutput
@@ -41,6 +55,30 @@ func (c ClusterOutputs) FindByName(name string) *v1beta1.ClusterOutput {
 type Outputs []v1beta1.Output
 
 func (c Outputs) FindByNamespacedName(namespace string, name string) *v1beta1.Output {
+	for i := range c {
+		output := &c[i]
+		if output.Namespace == namespace && output.Name == name {
+			return output
+		}
+	}
+	return nil
+}
+
+type SyslogNGClusterOutputs []v1beta1.SyslogNGClusterOutput
+
+func (c SyslogNGClusterOutputs) FindByName(name string) *v1beta1.SyslogNGClusterOutput {
+	for i := range c {
+		output := &c[i]
+		if output.Name == name {
+			return output
+		}
+	}
+	return nil
+}
+
+type SyslogNGOutputs []v1beta1.SyslogNGOutput
+
+func (c SyslogNGOutputs) FindByNamespacedName(namespace string, name string) *v1beta1.SyslogNGOutput {
 	for i := range c {
 		output := &c[i]
 		if output.Namespace == namespace && output.Name == name {

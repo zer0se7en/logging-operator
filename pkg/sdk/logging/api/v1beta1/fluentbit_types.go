@@ -15,11 +15,17 @@
 package v1beta1
 
 import (
+	"fmt"
+	"reflect"
 	"strconv"
+	"strings"
 
-	"github.com/banzaicloud/operator-tools/pkg/typeoverride"
-	"github.com/banzaicloud/operator-tools/pkg/volume"
+	"github.com/cisco-open/operator-tools/pkg/typeoverride"
+	util "github.com/cisco-open/operator-tools/pkg/utils"
+	"github.com/cisco-open/operator-tools/pkg/volume"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // +name:"FluentbitSpec"
@@ -28,20 +34,46 @@ type _hugoFluentbitSpec interface{} //nolint:deadcode,unused
 
 // +name:"FluentbitSpec"
 // +version:"v1beta1"
-// +description:"FluentbitSpec defines the desired state of Fluentbit"
+// +description:"FluentbitSpec defines the desired state of FluentbitAgent"
 type _metaFluentbitSpec interface{} //nolint:deadcode,unused
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:path=fluentbitagents,scope=Cluster,categories=logging-all
+// +kubebuilder:storageversion
+
+// FluentbitAgent is the Schema for the loggings API
+type FluentbitAgent struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   FluentbitSpec   `json:"spec,omitempty"`
+	Status FluentbitStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+
+// FluentbitAgentList contains a list of FluentbitAgent
+type FluentbitAgentList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []FluentbitAgent `json:"items"`
+}
 
 // +kubebuilder:object:generate=true
 
-// FluentbitSpec defines the desired state of Fluentbit
+// FluentbitSpec defines the desired state of FluentbitAgent
 type FluentbitSpec struct {
-	Annotations map[string]string `json:"annotations,omitempty"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	EnvVars     []corev1.EnvVar   `json:"envVars,omitempty"`
-	Image       ImageSpec         `json:"image,omitempty"`
-	TLS         *FluentbitTLS     `json:"tls,omitempty"`
-	TargetHost  string            `json:"targetHost,omitempty"`
-	TargetPort  int32             `json:"targetPort,omitempty"`
+	LoggingRef string `json:"LoggingRef,omitempty"`
+
+	DaemonSetAnnotations map[string]string `json:"daemonsetAnnotations,omitempty"`
+	Annotations          map[string]string `json:"annotations,omitempty"`
+	Labels               map[string]string `json:"labels,omitempty"`
+	EnvVars              []corev1.EnvVar   `json:"envVars,omitempty"`
+	Image                ImageSpec         `json:"image,omitempty"`
+	TLS                  *FluentbitTLS     `json:"tls,omitempty"`
+	TargetHost           string            `json:"targetHost,omitempty"`
+	TargetPort           int32             `json:"targetPort,omitempty"`
 	// Set the flush time in seconds.nanoseconds. The engine loop uses a Flush timeout to define when is required to flush the records ingested by input plugins through the defined output plugins. (default: 1)
 	Flush int32 `json:"flush,omitempty"  plugin:"default:1"`
 	// Set the grace time in seconds as Integer value. The engine loop uses a Grace timeout to define wait time on exit (default: 5)
@@ -49,7 +81,7 @@ type FluentbitSpec struct {
 	// Set the logging verbosity level. Allowed values are: error, warn, info, debug and trace. Values are accumulative, e.g: if 'debug' is set, it will include error, warning, info and debug.  Note that trace mode is only available if Fluent Bit was built with the WITH_TRACE option enabled. (default: info)
 	LogLevel string `json:"logLevel,omitempty" plugin:"default:info"`
 	// Set the coroutines stack size in bytes. The value must be greater than the page size of the running system. Don't set too small value (say 4096), or coroutine threads can overrun the stack buffer.
-	//Do not change the default value of this parameter unless you know what you are doing. (default: 24576)
+	// Do not change the default value of this parameter unless you know what you are doing. (default: 24576)
 	CoroStackSize int32                       `json:"coroStackSize,omitempty" plugin:"default:24576"`
 	Resources     corev1.ResourceRequirements `json:"resources,omitempty"`
 	Tolerations   []corev1.Toleration         `json:"tolerations,omitempty"`
@@ -57,7 +89,7 @@ type FluentbitSpec struct {
 	Affinity      *corev1.Affinity            `json:"affinity,omitempty"`
 	Metrics       *Metrics                    `json:"metrics,omitempty"`
 	Security      *Security                   `json:"security,omitempty"`
-	// +docLink:"volume.KubernetesVolume,https://github.com/banzaicloud/operator-tools/tree/master/docs/types"
+	// +docLink:"volume.KubernetesVolume,https://github.com/cisco-open/operator-tools/tree/master/docs/types"
 	PositionDB volume.KubernetesVolume `json:"positiondb,omitempty"`
 	// Deprecated, use positiondb
 	PosisionDBLegacy  *volume.KubernetesVolume `json:"position_db,omitempty"`
@@ -65,6 +97,7 @@ type FluentbitSpec struct {
 	ExtraVolumeMounts []*VolumeMount           `json:"extraVolumeMounts,omitempty"`
 	InputTail         InputTail                `json:"inputTail,omitempty"`
 	FilterAws         *FilterAws               `json:"filterAws,omitempty"`
+	FilterModify      []FilterModify           `json:"filterModify,omitempty"`
 	// Deprecated, use inputTail.parser
 	Parser string `json:"parser,omitempty"`
 	// Parameters for Kubernetes metadata filter
@@ -72,19 +105,32 @@ type FluentbitSpec struct {
 	// Disable Kubernetes metadata filter
 	DisableKubernetesFilter *bool         `json:"disableKubernetesFilter,omitempty"`
 	BufferStorage           BufferStorage `json:"bufferStorage,omitempty"`
-	// +docLink:"volume.KubernetesVolume,https://github.com/banzaicloud/operator-tools/tree/master/docs/types"
-	BufferStorageVolume     volume.KubernetesVolume      `json:"bufferStorageVolume,omitempty"`
-	CustomConfigSecret      string                       `json:"customConfigSecret,omitempty"`
-	PodPriorityClassName    string                       `json:"podPriorityClassName,omitempty"`
-	LivenessProbe           *corev1.Probe                `json:"livenessProbe,omitempty"`
-	LivenessDefaultCheck    bool                         `json:"livenessDefaultCheck,omitempty"`
-	ReadinessProbe          *corev1.Probe                `json:"readinessProbe,omitempty"`
-	Network                 *FluentbitNetwork            `json:"network,omitempty"`
-	ForwardOptions          *ForwardOptions              `json:"forwardOptions,omitempty"`
-	EnableUpstream          bool                         `json:"enableUpstream,omitempty"`
-	ServiceAccountOverrides *typeoverride.ServiceAccount `json:"serviceAccount,omitempty"`
-	DNSPolicy               corev1.DNSPolicy             `json:"dnsPolicy,omitempty"`
-	DNSConfig               *corev1.PodDNSConfig         `json:"dnsConfig,omitempty"`
+	// +docLink:"volume.KubernetesVolume,https://github.com/cisco-open/operator-tools/tree/master/docs/types"
+	BufferStorageVolume     volume.KubernetesVolume        `json:"bufferStorageVolume,omitempty"`
+	BufferVolumeMetrics     *Metrics                       `json:"bufferVolumeMetrics,omitempty"`
+	BufferVolumeImage       ImageSpec                      `json:"bufferVolumeImage,omitempty"`
+	BufferVolumeArgs        []string                       `json:"bufferVolumeArgs,omitempty"`
+	CustomConfigSecret      string                         `json:"customConfigSecret,omitempty"`
+	PodPriorityClassName    string                         `json:"podPriorityClassName,omitempty"`
+	LivenessProbe           *corev1.Probe                  `json:"livenessProbe,omitempty"`
+	LivenessDefaultCheck    bool                           `json:"livenessDefaultCheck,omitempty"`
+	ReadinessProbe          *corev1.Probe                  `json:"readinessProbe,omitempty"`
+	Network                 *FluentbitNetwork              `json:"network,omitempty"`
+	ForwardOptions          *ForwardOptions                `json:"forwardOptions,omitempty"`
+	EnableUpstream          bool                           `json:"enableUpstream,omitempty"`
+	ServiceAccountOverrides *typeoverride.ServiceAccount   `json:"serviceAccount,omitempty"`
+	DNSPolicy               corev1.DNSPolicy               `json:"dnsPolicy,omitempty"`
+	DNSConfig               *corev1.PodDNSConfig           `json:"dnsConfig,omitempty"`
+	HostNetwork             bool                           `json:"HostNetwork,omitempty"`
+	SyslogNGOutput          *FluentbitTCPOutput            `json:"syslogng_output,omitempty"`
+	UpdateStrategy          appsv1.DaemonSetUpdateStrategy `json:"updateStrategy,omitempty"`
+	// Specify a custom parser file to load in addition to the default parsers file.
+	// It must be a valid key in the configmap specified by customConfig
+	CustomParsers string `json:"customParsers,omitempty"`
+}
+
+// FluentbitStatus defines the resource status for FluentbitAgent
+type FluentbitStatus struct {
 }
 
 // +kubebuilder:object:generate=true
@@ -94,6 +140,14 @@ type FluentbitTLS struct {
 	Enabled    *bool  `json:"enabled"`
 	SecretName string `json:"secretName,omitempty"`
 	SharedKey  string `json:"sharedKey,omitempty"`
+}
+
+// +kubebuilder:object:generate=true
+
+// FluentbitTCPOutput defines the TLS configs
+type FluentbitTCPOutput struct {
+	JsonDateKey    string `json:"json_date_key,omitempty" plugin:"default:ts"`
+	JsonDateFormat string `json:"json_date_format,omitempty" plugin:"default:iso8601"`
 }
 
 // FluentbitNetwork defines network configuration for fluentbit
@@ -143,7 +197,7 @@ type BufferStorage struct {
 	StorageBacklogMemLimit string `json:"storage.backlog.mem_limit,omitempty"`
 }
 
-// InputTail defines Fluentbit tail input configuration The tail input plugin allows to monitor one or several text files. It has a similar behavior like tail -f shell command.
+// InputTail defines FluentbitAgent tail input configuration The tail input plugin allows to monitor one or several text files. It has a similar behavior like tail -f shell command.
 type InputTail struct {
 	// Specify the buffering mechanism to use. It can be memory or filesystem. (default:memory)
 	StorageType string `json:"storage.type,omitempty"`
@@ -157,6 +211,8 @@ type InputTail struct {
 	PathKey string `json:"Path_Key,omitempty"`
 	// Set one or multiple shell patterns separated by commas to exclude files matching a certain criteria, e.g: exclude_path=*.gz,*.zip
 	ExcludePath string `json:"Exclude_Path,omitempty"`
+	// For new discovered files on start (without a database offset/position), read the content from the head of the file, not tail.
+	ReadFromHead bool `json:"Read_From_Head,omitempty"`
 	// The interval of refreshing the list of watched files in seconds. (default:60)
 	RefreshInterval string `json:"Refresh_Interval,omitempty"`
 	// Specify the number of extra time in seconds to monitor a file once is rotated in case some pending data is flushed. (default:5)
@@ -169,6 +225,10 @@ type InputTail struct {
 	DB *string `json:"DB,omitempty"`
 	// Set a default synchronization (I/O) method. Values: Extra, Full, Normal, Off. This flag affects how the internal SQLite engine do synchronization to disk, for more details about each option please refer to this section. (default:Full)
 	DBSync string `json:"DB_Sync,omitempty"`
+	// Specify that the database will be accessed only by Fluent Bit. Enabling this feature helps to increase performance when accessing the database but it restrict any external tool to query the content. (default: true)
+	DBLocking *bool `json:"DB.locking,omitempty"`
+	// sets the journal mode for databases (WAL). Enabling WAL provides higher performance. Note that WAL is not compatible with shared network file systems. (default: WAL)
+	DBJournalMode string `json:"DB.journal_mode,omitempty"`
 	// Set a limit of memory that Tail plugin can use when appending data to the Engine. If the limit is reach, it will be paused; when the data is flushed it resumes.
 	MemBufLimit string `json:"Mem_Buf_Limit,omitempty"`
 	// Specify the name of a parser to interpret the entry as a structured message.
@@ -191,7 +251,7 @@ type InputTail struct {
 	DockerMode string `json:"Docker_Mode,omitempty"`
 	// Specify an optional parser for the first line of the docker multiline mode.
 	DockerModeParser string `json:"Docker_Mode_Parser,omitempty"`
-	//Wait period time in seconds to flush queued unfinished split lines. (default:4)
+	// Wait period time in seconds to flush queued unfinished split lines. (default:4)
 	DockerModeFlush string `json:"Docker_Mode_Flush,omitempty"`
 	// Specify one or multiple parser definitions to apply to the content. Part of the new Multiline Core support in 1.8 (default: "")
 	MultilineParser []string `json:"multiline.parser,omitempty"`
@@ -211,6 +271,8 @@ type FilterKubernetes struct {
 	KubeCAPath string `json:"Kube_CA_Path,omitempty"`
 	// Token file  (default:/var/run/secrets/kubernetes.io/serviceaccount/token)
 	KubeTokenFile string `json:"Kube_Token_File,omitempty" plugin:"default:/var/run/secrets/kubernetes.io/serviceaccount/token"`
+	// Token TTL configurable 'time to live' for the K8s token. By default, it is set to 600 seconds. After this time, the token is reloaded from Kube_Token_File or the Kube_Token_Command.  (default:"600")
+	KubeTokenTTL string `json:"Kube_Token_TTL,omitempty" plugin:"default:600"`
 	// When the source records comes from Tail input plugin, this option allows to specify what's the prefix used in Tail configuration. (default:kube.var.log.containers.)
 	KubeTagPrefix string `json:"Kube_Tag_Prefix,omitempty" plugin:"default:kubernetes.var.log.containers"`
 	// When enabled, it checks if the log field content is a JSON string map, if so, it append the map fields as part of the log structure. (default:Off)
@@ -229,6 +291,8 @@ type FilterKubernetes struct {
 	TLSVerify string `json:"tls.verify,omitempty"`
 	// When enabled, the filter reads logs coming in Journald format. (default:Off)
 	UseJournal string `json:"Use_Journal,omitempty"`
+	// When enabled, metadata will be fetched from K8s when docker_id is changed. (default:Off)
+	CacheUseDockerId string `json:"Cache_Use_Docker_Id,omitempty"`
 	// Set an alternative Parser to process record Tag and extract pod_name, namespace_name, container_name and docker_id. The parser must be registered in a parsers file (refer to parser filter-kube-test as an example).
 	RegexParser string `json:"Regex_Parser,omitempty"`
 	// Allow Kubernetes Pods to suggest a pre-defined Parser (read more about it in Kubernetes Annotations section) (default:Off)
@@ -251,6 +315,8 @@ type FilterKubernetes struct {
 	UseKubelet string `json:"Use_Kubelet,omitempty"`
 	// kubelet port using for HTTP request, this only works when Use_Kubelet  set to On (default:10250)
 	KubeletPort string `json:"Kubelet_Port,omitempty"`
+	// Configurable TTL for K8s cached metadata. By default, it is set to 0 which means TTL for cache entries is disabled and cache entries are evicted at random when capacity is reached. In order to enable this option, you should set the number to a time interval. For example, set this value to 60 or 60s and cache entries which have been created more than 60s will be evicted. (default:0)
+	KubeMetaCacheTTL string `json:"Kube_Meta_Cache_TTL,omitempty"`
 }
 
 // FilterAws The AWS Filter Enriches logs with AWS Metadata.
@@ -277,6 +343,100 @@ type FilterAws struct {
 	Match string `json:"Match,omitempty" plugin:"default:*"`
 }
 
+// FilterModify The Modify Filter plugin allows you to change records using rules and conditions.
+type FilterModify struct {
+	// FluentbitAgent Filter Modification Rule
+	Rules []FilterModifyRule `json:"rules,omitempty"`
+	// FluentbitAgent Filter Modification Condition
+	Conditions []FilterModifyCondition `json:"conditions,omitempty"`
+}
+
+// FilterModifyRule The Modify Filter plugin allows you to change records using rules and conditions.
+type FilterModifyRule struct {
+	// Add a key/value pair with key KEY and value VALUE. If KEY already exists, this field is overwritten
+	Set *FilterKeyValue `json:"Set,omitempty"`
+	// Add a key/value pair with key KEY and value VALUE if KEY does not exist
+	Add *FilterKeyValue `json:"Add,omitempty" `
+	// Remove a key/value pair with key KEY if it exists
+	Remove *FilterKey `json:"Remove,omitempty" `
+	// Remove all key/value pairs with key matching wildcard KEY
+	RemoveWildcard *FilterKey `json:"Remove_wildcard,omitempty" `
+	// Remove all key/value pairs with key matching regexp KEY
+	RemoveRegex *FilterKey `json:"Remove_regex,omitempty" `
+	// Rename a key/value pair with key KEY to RENAMED_KEY if KEY exists AND RENAMED_KEY does not exist
+	Rename *FilterKeyValue `json:"Rename,omitempty" `
+	// Rename a key/value pair with key KEY to RENAMED_KEY if KEY exists. If RENAMED_KEY already exists, this field is overwritten
+	HardRename *FilterKeyValue `json:"Hard_rename,omitempty" `
+	// Copy a key/value pair with key KEY to COPIED_KEY if KEY exists AND COPIED_KEY does not exist
+	Copy *FilterKeyValue `json:"Copy,omitempty" `
+	// Copy a key/value pair with key KEY to COPIED_KEY if KEY exists. If COPIED_KEY already exists, this field is overwritten
+	HardCopy *FilterKeyValue `json:"Hard_copy,omitempty" `
+}
+
+// FilterModifyCondition The Modify Filter plugin allows you to change records using rules and conditions.
+type FilterModifyCondition struct {
+	// Is true if KEY exists
+	KeyExists *FilterKey `json:"Key_exists,omitempty"`
+	// Is true if KEY does not exist
+	KeyDoesNotExist *FilterKeyValue `json:"Key_does_not_exist,omitempty"`
+	// Is true if a key matches regex KEY
+	AKeyMatches *FilterKey `json:"A_key_matches,omitempty"`
+	// Is true if no key matches regex KEY
+	NoKeyMatches *FilterKey `json:"No_key_matches,omitempty"`
+	// Is true if KEY exists and its value is VALUE
+	KeyValueEquals *FilterKeyValue `json:"Key_value_equals,omitempty"`
+	// Is true if KEY exists and its value is not VALUE
+	KeyValueDoesNotEqual *FilterKeyValue `json:"Key_value_does_not_equal,omitempty"`
+	// Is true if key KEY exists and its value matches VALUE
+	KeyValueMatches *FilterKeyValue `json:"Key_value_matches,omitempty"`
+	// Is true if key KEY exists and its value does not match VALUE
+	KeyValueDoesNotMatch *FilterKeyValue `json:"Key_value_does_not_match,omitempty"`
+	// Is true if all keys matching KEY have values that match VALUE
+	MatchingKeysHaveMatchingValues *FilterKeyValue `json:"Matching_keys_have_matching_values,omitempty"`
+	// Is true if all keys matching KEY have values that do not match VALUE
+	MatchingKeysDoNotHaveMatchingValues *FilterKeyValue `json:"Matching_keys_do_not_have_matching_values,omitempty"`
+}
+
+// Operation Doc stub
+type Operation struct {
+	Op    string `json:"Op,omitempty"`
+	Key   string `json:"Key,omitempty"`
+	Value string `json:"Value,omitempty"`
+}
+
+func getOperation(c interface{}) (result Operation) {
+	vc := reflect.ValueOf(c)
+	for i := 0; i < vc.NumField(); i++ {
+		field := vc.Field(i)
+		if !field.IsNil() {
+			result.Op = strings.SplitN(vc.Type().Field(i).Tag.Get("json"), ",", 2)[0]
+			switch f := field.Interface().(type) {
+			case *FilterKey:
+				result.Key = f.Key
+			case *FilterKeyValue:
+				result.Key, result.Value = f.Key, f.Value
+			}
+			return
+		}
+	}
+	return
+}
+
+func (c FilterModifyCondition) Operation() (result Operation) {
+	return getOperation(c)
+}
+func (r FilterModifyRule) Operation() (result Operation) {
+	return getOperation(r)
+}
+
+type FilterKey struct {
+	Key string `json:"key,omitempty"`
+}
+type FilterKeyValue struct {
+	Key   string `json:"key,omitempty"`
+	Value string `json:"value,omitempty"`
+}
+
 // VolumeMount defines source and destination folders of a hostPath type pod mount
 type VolumeMount struct {
 	// Source folder
@@ -298,4 +458,58 @@ type ForwardOptions struct {
 	RetryLimit         string `json:"Retry_Limit,omitempty"`
 	// `storage.total_limit_size` Limit the maximum number of Chunks in the filesystem for the current output logical destination.
 	StorageTotalLimitSize string `json:"storage.total_limit_size,omitempty"`
+}
+
+type FluentbitNameProvider struct {
+	logging   *Logging
+	fluentbit *FluentbitAgent
+}
+
+func (l *FluentbitNameProvider) ComponentName(name string) string {
+	if l.logging != nil {
+		return l.logging.QualifiedName(name)
+	}
+	return fmt.Sprintf("%s-%s", l.fluentbit.Name, name)
+}
+
+func (l *FluentbitNameProvider) Name() string {
+	if l.logging != nil {
+		return l.logging.Name
+	}
+	return l.fluentbit.Name
+}
+
+func (l *FluentbitNameProvider) OwnerRef() metav1.OwnerReference {
+	if l.logging != nil {
+		return metav1.OwnerReference{
+			APIVersion: l.logging.APIVersion,
+			Kind:       l.logging.Kind,
+			Name:       l.logging.Name,
+			UID:        l.logging.UID,
+			Controller: util.BoolPointer(true),
+		}
+	}
+	return metav1.OwnerReference{
+		APIVersion: l.fluentbit.APIVersion,
+		Kind:       l.fluentbit.Kind,
+		Name:       l.fluentbit.Name,
+		UID:        l.fluentbit.UID,
+		Controller: util.BoolPointer(true),
+	}
+}
+
+func NewLegacyFluentbitNameProvider(logging *Logging) *FluentbitNameProvider {
+	return &FluentbitNameProvider{
+		logging: logging,
+	}
+}
+
+func NewStandaloneFluentbitNameProvider(agent *FluentbitAgent) *FluentbitNameProvider {
+	return &FluentbitNameProvider{
+		fluentbit: agent,
+	}
+}
+
+func init() {
+	SchemeBuilder.Register(&FluentbitAgent{}, &FluentbitAgentList{})
 }

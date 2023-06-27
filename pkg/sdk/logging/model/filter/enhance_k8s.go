@@ -15,8 +15,8 @@
 package filter
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"Enhance K8s Metadata"
@@ -76,23 +76,29 @@ type EnhanceK8s struct {
 	CacheRefreshVariation int `json:"cache_refresh_variation,omitempty"`
 }
 
-// #### Example `EnhanceK8s` filter configurations
+// ## Example `EnhanceK8s` filter configurations
 // ```yaml
-//apiVersion: logging.banzaicloud.io/v1beta1
-//kind: Logging
-//metadata:
-//  name: demo-flow
-//spec:
-//  globalFilters:
-//    - enhanceK8s: {}
+// apiVersion: logging.banzaicloud.io/v1beta1
+// kind: Logging
+// metadata:
+//
+//	name: demo-flow
+//
+// spec:
+//
+//	globalFilters:
+//	  - enhanceK8s: {}
+//
 // ```
 //
 // #### Fluentd Config Result
 // ```yaml
-//<filter **>
-//  @type enhance_k8s_metadata
-//  @id test_enhanceK8s
-//</filter>
+// <filter **>
+//
+//	@type enhance_k8s_metadata
+//	@id test_enhanceK8s
+//
+// </filter>
 // ```
 type _expEnhanceK8s interface{} //nolint:deadcode,unused
 

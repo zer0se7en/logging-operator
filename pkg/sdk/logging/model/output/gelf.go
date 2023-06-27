@@ -1,4 +1,4 @@
-// Copyright © 2021 Banzai Cloud
+// Copyright © 2021 Cisco Systems, Inc. and/or its affiliates
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@
 package output
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"GELF"
@@ -50,27 +50,32 @@ type GELFOutputConfig struct {
 	TLSOptions map[string]string `json:"tls_options,omitempty"`
 }
 
+// ## Example `GELF` output configurations
+// ```yaml
+// apiVersion: logging.banzaicloud.io/v1beta1
+// kind: Output
+// metadata:
 //
-// #### Example `GELF` output configurations
-// ```
-//apiVersion: logging.banzaicloud.io/v1beta1
-//kind: Output
-//metadata:
-//  name: gelf-output-sample
-//spec:
-//  gelf:
-//    host: gelf-host
-//    port: 12201
+//	name: gelf-output-sample
+//
+// spec:
+//
+//	gelf:
+//	  host: gelf-host
+//	  port: 12201
+//
 // ```
 //
-// #### Fluentd Config Result
+// ## Fluentd Config Result
 // ```
-//  <match **>
-//	@type gelf
-//	@id test_gelf
-//	host gelf-host
-//	port 12201
-//  </match>
+//
+//	 <match **>
+//		@type gelf
+//		@id test_gelf
+//		host gelf-host
+//		port 12201
+//	 </match>
+//
 // ```
 type _expGELF interface{} //nolint:deadcode,unused
 

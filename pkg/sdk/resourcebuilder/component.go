@@ -15,18 +15,14 @@
 package resourcebuilder
 
 import (
+	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 
 	"emperror.dev/errors"
-	extensionsv1alpha1 "github.com/banzaicloud/logging-operator/pkg/sdk/extensions/api/v1alpha1"
-	extensionsconfig "github.com/banzaicloud/logging-operator/pkg/sdk/extensions/extensionsconfig"
-	loggingv1beta1 "github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/static/gen/crds"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/static/gen/rbac"
-	"github.com/banzaicloud/operator-tools/pkg/reconciler"
-	"github.com/banzaicloud/operator-tools/pkg/types"
-	"github.com/banzaicloud/operator-tools/pkg/utils"
+	"github.com/cisco-open/operator-tools/pkg/reconciler"
+	"github.com/cisco-open/operator-tools/pkg/types"
+	"github.com/cisco-open/operator-tools/pkg/utils"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	admissionregistration "k8s.io/api/admissionregistration/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -43,12 +39,20 @@ import (
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	extensionsv1alpha1 "github.com/kube-logging/logging-operator/pkg/sdk/extensions/api/v1alpha1"
+	extensionsconfig "github.com/kube-logging/logging-operator/pkg/sdk/extensions/extensionsconfig"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
+	loggingv1beta1 "github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
+	"github.com/kube-logging/logging-operator/pkg/sdk/static/gen/crds"
+	"github.com/kube-logging/logging-operator/pkg/sdk/static/gen/rbac"
 )
 
 const (
-	Image            = "ghcr.io/banzaicloud/logging-operator:3.17.1"
+	Image            = "ghcr.io/kube-logging/logging-operator:4.2.0"
 	defaultNamespace = "logging-system"
 )
 
@@ -64,6 +68,7 @@ type ComponentConfig struct {
 	WatchNamespace         string               `json:"watchNamespace,omitempty"`
 	WatchLoggingName       string               `json:"watchLoggingName,omitempty"`
 	DisableWebhook         bool                 `json:"disableWebhook,omitempty"`
+	Metrics                *v1beta1.Metrics     `json:"installServiceMonitor,omitempty"`
 	InstallPrometheusRules bool                 `json:"-"`
 }
 
@@ -73,29 +78,36 @@ func (c *ComponentConfig) build(parent reconciler.ResourceOwner, fn func(reconci
 	})
 }
 
-func ResourceBuilders(parent reconciler.ResourceOwner, object interface{}) (resources []reconciler.ResourceBuilder) {
-	config := &ComponentConfig{}
-	if object != nil {
-		config = object.(*ComponentConfig)
+func ResourceBuildersWithReader(reader client.Reader) reconciler.ResourceBuilders {
+	return func(parent reconciler.ResourceOwner, object interface{}) (resources []reconciler.ResourceBuilder) {
+		config := &ComponentConfig{}
+		if object != nil {
+			config = object.(*ComponentConfig)
+		}
+		if config.Namespace == "" {
+			config.Namespace = defaultNamespace
+		}
+		var modifiers []CRDModifier
+		// We don't return with an absent state since we don't want them to be removed
+		// however we return the CRDs without modified with webhook configuration to set the conversion strategy to default (None)
+		if config.IsEnabled() && !config.DisableWebhook {
+			modifiers = ConversionWebhookModifiers(parent, config)
+		}
+		resources = AppendCRDResourceBuilders(resources, modifiers...)
+		resources = AppendOperatorResourceBuilders(resources, parent, config)
+
+		if ok, _ := CRDExists(context.Background(), reader, "issuers.cert-manager.io"); ok {
+			resources = AppendWebhookResourceBuilders(resources, parent, config)
+		}
+
+		if config.InstallPrometheusRules {
+			resources = AppendPrometheusRulesResourceBuilders(resources, parent, config)
+		}
+		if config.Metrics != nil {
+			resources = AppendServiceMonitorBuilder(resources, parent, config)
+		}
+		return resources
 	}
-	if config.Namespace == "" {
-		config.Namespace = defaultNamespace
-	}
-	var modifiers []CRDModifier
-	// We don't return with an absent state since we don't want them to be removed
-	// however we return the CRDs without modified with webhook configuration to set the conversion strategy to default (None)
-	if config.IsEnabled() && !config.DisableWebhook {
-		modifiers = ConversionWebhookModifiers(parent, config)
-	}
-	resources = AppendCRDResourceBuilders(resources, modifiers...)
-	resources = AppendOperatorResourceBuilders(resources, parent, config)
-	if !config.DisableWebhook {
-		resources = AppendWebhookResourceBuilders(resources, parent, config)
-	}
-	if config.InstallPrometheusRules {
-		resources = AppendPrometheusRulesResourceBuilders(resources, parent, config)
-	}
-	return resources
 }
 
 func AppendOperatorResourceBuilders(rbs []reconciler.ResourceBuilder, parent reconciler.ResourceOwner, config *ComponentConfig) []reconciler.ResourceBuilder {
@@ -124,6 +136,24 @@ func AppendCRDResourceBuilders(rbs []reconciler.ResourceBuilder, modifiers ...CR
 		},
 		func() (runtime.Object, reconciler.DesiredState, error) {
 			return CRD(loggingv1beta1.GroupVersion.Group, "clusteroutputs", modifiers...)
+		},
+		func() (runtime.Object, reconciler.DesiredState, error) {
+			return CRD(loggingv1beta1.GroupVersion.Group, "syslogngflows", modifiers...)
+		},
+		func() (runtime.Object, reconciler.DesiredState, error) {
+			return CRD(loggingv1beta1.GroupVersion.Group, "syslogngclusterflows", modifiers...)
+		},
+		func() (runtime.Object, reconciler.DesiredState, error) {
+			return CRD(loggingv1beta1.GroupVersion.Group, "syslogngoutputs", modifiers...)
+		},
+		func() (runtime.Object, reconciler.DesiredState, error) {
+			return CRD(loggingv1beta1.GroupVersion.Group, "syslogngclusteroutputs", modifiers...)
+		},
+		func() (runtime.Object, reconciler.DesiredState, error) {
+			return CRD(loggingv1beta1.GroupVersion.Group, "nodeagents", modifiers...)
+		},
+		func() (runtime.Object, reconciler.DesiredState, error) {
+			return CRD(loggingv1beta1.GroupVersion.Group, "fluentbitagents", modifiers...)
 		},
 		func() (runtime.Object, reconciler.DesiredState, error) {
 			return CRD(extensionsv1alpha1.GroupVersion.Group, "hosttailers", modifiers...)
@@ -212,7 +242,7 @@ func CRD(group string, kind string, modifiers ...CRDModifier) (runtime.Object, r
 	if err != nil {
 		return nil, nil, errors.WrapIff(err, "failed to open %s crd", kind)
 	}
-	bytes, err := ioutil.ReadAll(crdFile)
+	bytes, err := io.ReadAll(crdFile)
 	if err != nil {
 		return nil, nil, errors.WrapIff(err, "failed to read %s crd", kind)
 	}
@@ -371,7 +401,7 @@ func ClusterRole(parent reconciler.ResourceOwner, config ComponentConfig) (runti
 	if err != nil {
 		return nil, nil, errors.WrapIf(err, "failed to open role.yaml")
 	}
-	roleAsByte, err := ioutil.ReadAll(roleFile)
+	roleAsByte, err := io.ReadAll(roleFile)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -390,6 +420,56 @@ func ClusterRole(parent reconciler.ResourceOwner, config ComponentConfig) (runti
 	role.TypeMeta.APIVersion = ""
 
 	return role, reconciler.StatePresent, err
+}
+
+func AppendServiceMonitorBuilder(rbs []reconciler.ResourceBuilder, parent reconciler.ResourceOwner, config *ComponentConfig) []reconciler.ResourceBuilder {
+	rbs = append(rbs,
+		func() (runtime.Object, reconciler.DesiredState, error) {
+			return &corev1.Service{
+				ObjectMeta: config.MetaOverrides.Merge(config.objectMeta(parent)),
+				Spec: corev1.ServiceSpec{
+					Ports: []corev1.ServicePort{
+						{
+							Protocol:   corev1.ProtocolTCP,
+							Name:       "http-metrics",
+							Port:       8080,
+							TargetPort: intstr.IntOrString{IntVal: 8080},
+						},
+					},
+					Selector:  config.labelSelector(parent),
+					Type:      corev1.ServiceTypeClusterIP,
+					ClusterIP: "None",
+				},
+			}, reconciler.StatePresent, nil
+		},
+		func() (runtime.Object, reconciler.DesiredState, error) {
+			return &monitoringv1.ServiceMonitor{
+				ObjectMeta: config.MetaOverrides.Merge(config.objectMeta(parent)),
+				Spec: monitoringv1.ServiceMonitorSpec{
+					JobLabel:        "",
+					TargetLabels:    nil,
+					PodTargetLabels: nil,
+					Endpoints: []monitoringv1.Endpoint{{
+						Port:                 "http-metrics",
+						Path:                 config.Metrics.Path,
+						Interval:             monitoringv1.Duration(config.Metrics.Interval),
+						ScrapeTimeout:        monitoringv1.Duration(config.Metrics.Timeout),
+						HonorLabels:          config.Metrics.ServiceMonitorConfig.HonorLabels,
+						RelabelConfigs:       config.Metrics.ServiceMonitorConfig.Relabelings,
+						MetricRelabelConfigs: config.Metrics.ServiceMonitorConfig.MetricsRelabelings,
+						Scheme:               config.Metrics.ServiceMonitorConfig.Scheme,
+						TLSConfig:            config.Metrics.ServiceMonitorConfig.TLSConfig,
+					}},
+					Selector:          v1.LabelSelector{MatchLabels: config.MetaOverrides.Merge(config.objectMeta(parent)).Labels},
+					NamespaceSelector: monitoringv1.NamespaceSelector{MatchNames: []string{config.MetaOverrides.Merge(config.objectMeta(parent)).Namespace}},
+					SampleLimit:       0,
+				},
+			}, reconciler.StatePresent, nil
+		},
+	)
+
+	return rbs
+
 }
 
 func (c *ComponentConfig) objectMeta(parent reconciler.ResourceOwner) v1.ObjectMeta {
@@ -465,6 +545,9 @@ func Issuer(parent reconciler.ResourceOwner, config ComponentConfig) (runtime.Ob
 	issuer.SetLabels(config.labelSelector(parent))
 	issuer.Object["spec"] = strIfMap{"selfSigned": strIfMap{}}
 
+	if config.DisableWebhook {
+		return &issuer, reconciler.StateAbsent, nil
+	}
 	return &issuer, reconciler.StatePresent, nil
 }
 
@@ -489,7 +572,9 @@ func Certificate(parent reconciler.ResourceOwner, config ComponentConfig) (runti
 			parent.GetName() + WebhookNameAffix + "." + config.Namespace + ".svc",
 		},
 	}
-
+	if config.DisableWebhook {
+		return &cert, reconciler.StateAbsent, nil
+	}
 	return &cert, reconciler.StatePresent, nil
 }
 
@@ -608,4 +693,11 @@ func ExtensionsMutatingWebhook(parent reconciler.ResourceOwner, config Component
 		SideEffects:             &sideEffects,
 		AdmissionReviewVersions: []string{"v1"},
 	}
+}
+
+func CRDExists(ctx context.Context, reader client.Reader, crdName string) (bool, error) {
+	if err := reader.Get(ctx, client.ObjectKey{Name: crdName}, new(crdv1.CustomResourceDefinition)); err != nil {
+		return false, errors.WrapIff(client.IgnoreNotFound(err), "retrieving custom resource definition %q", crdName)
+	}
+	return true, nil
 }

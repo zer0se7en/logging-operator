@@ -15,9 +15,9 @@
 package output
 
 import (
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"Http"
@@ -28,14 +28,16 @@ type _hugoHTTP interface{} //nolint:deadcode,unused
 // Sends logs to HTTP/HTTPS endpoints.
 // More info at https://docs.fluentd.org/output/http.
 //
-// #### Example output configurations
-// ```
+// ## Example output configurations
+// ```yaml
 // spec:
-//   http:
-//     endpoint: http://logserver.com:9000/api
-//     buffer:
-//       tags: "[]"
-//       flush_interval: 10s
+//
+//	http:
+//	  endpoint: http://logserver.com:9000/api
+//	  buffer:
+//	    tags: "[]"
+//	    flush_interval: 10s
+//
 // ```
 type _docHTTP interface{} //nolint:deadcode,unused
 
@@ -85,12 +87,16 @@ type HTTPOutputConfig struct {
 	TlsVerifyMode string `json:"tls_verify_mode,omitempty"`
 	// Raise UnrecoverableError when the response code is non success, 1xx/3xx/4xx/5xx. If false, the plugin logs error message instead of raising UnrecoverableError. (default: true)
 	ErrorResponseAsUnrecoverable *bool `json:"error_response_as_unrecoverable,omitempty"`
-	// List of retryable response codes. If the response code is included in this list, the plugin retries the buffer flush. (default: [503])
+	// List of retryable response codes. If the response code is included in this list, the plugin retries the buffer flush. Since Fluentd v2 the Status code 503 is going to be removed from default. (default: [503])
 	RetryableResponseCodes []int `json:"retryable_response_codes,omitempty"`
 	// +docLink:"HTTP auth,#http-auth-config"
 	Auth *HTTPAuth `json:"auth,omitempty"`
 	// +docLink:"Buffer,../buffer/"
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, fluentd logs warning message and increases metric fluentd_output_status_slow_flush_count.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
 }
 
 func (c *HTTPOutputConfig) ToDirective(secretLoader secret.SecretLoader, id string) (types.Directive, error) {

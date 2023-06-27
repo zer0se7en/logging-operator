@@ -1,4 +1,4 @@
-// Copyright © 2021 Banzai Cloud
+// Copyright © 2021 Cisco Systems, Inc. and/or its affiliates
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@ package nodeagent
 
 import (
 	"emperror.dev/errors"
-	"github.com/banzaicloud/operator-tools/pkg/merge"
-	"github.com/banzaicloud/operator-tools/pkg/reconciler"
-	util "github.com/banzaicloud/operator-tools/pkg/utils"
+	"github.com/cisco-open/operator-tools/pkg/merge"
+	"github.com/cisco-open/operator-tools/pkg/reconciler"
+	util "github.com/cisco-open/operator-tools/pkg/utils"
 	v1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -75,8 +75,8 @@ func (n *nodeAgentInstance) monitorServiceMetrics() (runtime.Object, reconciler.
 					HonorLabels:          n.nodeAgent.FluentbitSpec.Metrics.ServiceMonitorConfig.HonorLabels,
 					RelabelConfigs:       n.nodeAgent.FluentbitSpec.Metrics.ServiceMonitorConfig.Relabelings,
 					MetricRelabelConfigs: n.nodeAgent.FluentbitSpec.Metrics.ServiceMonitorConfig.MetricsRelabelings,
-					Interval:             n.nodeAgent.FluentbitSpec.Metrics.Interval,
-					ScrapeTimeout:        n.nodeAgent.FluentbitSpec.Metrics.Timeout,
+					Interval:             v1.Duration(n.nodeAgent.FluentbitSpec.Metrics.Interval),
+					ScrapeTimeout:        v1.Duration(n.nodeAgent.FluentbitSpec.Metrics.Timeout),
 				}},
 				Selector: v12.LabelSelector{
 					MatchLabels: util.MergeLabels(n.getFluentBitLabels(), generateLoggingRefLabels(n.logging.ObjectMeta.GetName())),

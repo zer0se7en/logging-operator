@@ -15,7 +15,7 @@
 package v1beta1
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/output"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/output"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -36,6 +36,7 @@ type OutputSpec struct {
 	GCSOutput                    *output.GCSOutput                    `json:"gcs,omitempty"`
 	OSSOutput                    *output.OSSOutput                    `json:"oss,omitempty"`
 	ElasticsearchOutput          *output.ElasticsearchOutput          `json:"elasticsearch,omitempty"`
+	OpenSearchOutput             *output.OpenSearchOutput             `json:"opensearch,omitempty"`
 	LogZOutput                   *output.LogZOutput                   `json:"logz,omitempty"`
 	LokiOutput                   *output.LokiOutput                   `json:"loki,omitempty"`
 	SumologicOutput              *output.SumologicOutput              `json:"sumologic,omitempty"`
@@ -55,6 +56,8 @@ type OutputSpec struct {
 	SyslogOutputConfig           *output.SyslogOutputConfig           `json:"syslog,omitempty"`
 	GELFOutputConfig             *output.GELFOutputConfig             `json:"gelf,omitempty"`
 	SQSOutputConfig              *output.SQSOutputConfig              `json:"sqs,omitempty"`
+	MattermostOutputConfig       *output.MattermostOutputConfig       `json:"mattermost,omitempty"`
+	RelabelOutputConfig          *output.RelabelOutputConfig          `json:"relabel,omitempty"`
 }
 
 // OutputStatus defines the observed state of Output

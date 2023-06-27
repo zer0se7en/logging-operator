@@ -16,7 +16,7 @@ package fluentd
 
 import (
 	"emperror.dev/errors"
-	"github.com/banzaicloud/operator-tools/pkg/reconciler"
+	"github.com/cisco-open/operator-tools/pkg/reconciler"
 	v1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,9 +42,8 @@ func (r *Reconciler) service() (runtime.Object, reconciler.DesiredState, error) 
 					TargetPort: intstr.IntOrString{IntVal: 24240},
 				},
 			},
-			Selector:     r.Logging.GetFluentdLabels(ComponentFluentd),
-			Type:         corev1.ServiceTypeClusterIP,
-			TopologyKeys: r.Logging.Spec.FluentdSpec.ServiceTopologyKeys,
+			Selector: r.Logging.GetFluentdLabels(ComponentFluentd),
+			Type:     corev1.ServiceTypeClusterIP,
 		},
 	}
 
@@ -102,8 +101,8 @@ func (r *Reconciler) monitorServiceMetrics() (runtime.Object, reconciler.Desired
 				Endpoints: []v1.Endpoint{{
 					Port:                 "http-metrics",
 					Path:                 r.Logging.Spec.FluentdSpec.Metrics.Path,
-					Interval:             r.Logging.Spec.FluentdSpec.Metrics.Interval,
-					ScrapeTimeout:        r.Logging.Spec.FluentdSpec.Metrics.Timeout,
+					Interval:             v1.Duration(r.Logging.Spec.FluentdSpec.Metrics.Interval),
+					ScrapeTimeout:        v1.Duration(r.Logging.Spec.FluentdSpec.Metrics.Timeout),
 					HonorLabels:          r.Logging.Spec.FluentdSpec.Metrics.ServiceMonitorConfig.HonorLabels,
 					RelabelConfigs:       r.Logging.Spec.FluentdSpec.Metrics.ServiceMonitorConfig.Relabelings,
 					MetricRelabelConfigs: r.Logging.Spec.FluentdSpec.Metrics.ServiceMonitorConfig.MetricsRelabelings,
@@ -168,8 +167,8 @@ func (r *Reconciler) monitorBufferServiceMetrics() (runtime.Object, reconciler.D
 				Endpoints: []v1.Endpoint{{
 					Port:                 "buffer-metrics",
 					Path:                 r.Logging.Spec.FluentdSpec.BufferVolumeMetrics.Path,
-					Interval:             r.Logging.Spec.FluentdSpec.BufferVolumeMetrics.Interval,
-					ScrapeTimeout:        r.Logging.Spec.FluentdSpec.BufferVolumeMetrics.Timeout,
+					Interval:             v1.Duration(r.Logging.Spec.FluentdSpec.BufferVolumeMetrics.Interval),
+					ScrapeTimeout:        v1.Duration(r.Logging.Spec.FluentdSpec.BufferVolumeMetrics.Timeout),
 					HonorLabels:          r.Logging.Spec.FluentdSpec.BufferVolumeMetrics.ServiceMonitorConfig.HonorLabels,
 					RelabelConfigs:       r.Logging.Spec.FluentdSpec.BufferVolumeMetrics.ServiceMonitorConfig.Relabelings,
 					MetricRelabelConfigs: r.Logging.Spec.FluentdSpec.BufferVolumeMetrics.ServiceMonitorConfig.MetricsRelabelings,
@@ -204,10 +203,9 @@ func (r *Reconciler) headlessService() (runtime.Object, reconciler.DesiredState,
 					TargetPort: intstr.IntOrString{IntVal: 24240},
 				},
 			},
-			Selector:     r.Logging.GetFluentdLabels(ComponentFluentd),
-			Type:         corev1.ServiceTypeClusterIP,
-			ClusterIP:    corev1.ClusterIPNone,
-			TopologyKeys: r.Logging.Spec.FluentdSpec.HeadlessServiceTopologyKeys,
+			Selector:  r.Logging.GetFluentdLabels(ComponentFluentd),
+			Type:      corev1.ServiceTypeClusterIP,
+			ClusterIP: corev1.ClusterIPNone,
 		},
 	}
 	return desired, reconciler.StatePresent, nil

@@ -15,8 +15,8 @@
 package filter
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +kubebuilder:object:generate=true
@@ -47,28 +47,34 @@ type Throttle struct {
 	GroupWarningDelaySeconds int `json:"group_warning_delay_s,omitempty"`
 }
 
-// #### Example `Throttle` filter configurations
+// ## Example `Throttle` filter configurations
 // ```yaml
-//apiVersion: logging.banzaicloud.io/v1beta1
-//kind: Flow
-//metadata:
-//  name: demo-flow
-//spec:
-//  filters:
-//    - throttle:
-//        group_key: "$.kubernetes.container_name"
-//  selectors: {}
-//  localOutputRefs:
-//    - demo-output
+// apiVersion: logging.banzaicloud.io/v1beta1
+// kind: Flow
+// metadata:
+//
+//	name: demo-flow
+//
+// spec:
+//
+//	filters:
+//	  - throttle:
+//	      group_key: "$.kubernetes.container_name"
+//	selectors: {}
+//	localOutputRefs:
+//	  - demo-output
+//
 // ```
 //
 // #### Fluentd Config Result
 // ```yaml
-//<filter **>
-//  @type throttle
-//  @id test_throttle
-//  group_key $.kubernetes.container_name
-//</filter>
+// <filter **>
+//
+//	@type throttle
+//	@id test_throttle
+//	group_key $.kubernetes.container_name
+//
+// </filter>
 // ```
 type _expThrottle interface{} //nolint:deadcode,unused
 

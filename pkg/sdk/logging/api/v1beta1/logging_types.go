@@ -18,8 +18,8 @@ import (
 	"errors"
 	"fmt"
 
-	util "github.com/banzaicloud/operator-tools/pkg/utils"
-	"github.com/banzaicloud/operator-tools/pkg/volume"
+	util "github.com/cisco-open/operator-tools/pkg/utils"
+	"github.com/cisco-open/operator-tools/pkg/volume"
 	"github.com/spf13/cast"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -45,28 +45,37 @@ type LoggingSpec struct {
 	LoggingRef string `json:"loggingRef,omitempty"`
 	// Disable configuration check before applying new fluentd configuration.
 	FlowConfigCheckDisabled bool `json:"flowConfigCheckDisabled,omitempty"`
+	// Whether to skip invalid Flow and ClusterFlow resources
+	SkipInvalidResources bool `json:"skipInvalidResources,omitempty"`
 	// Override generated config. This is a *raw* configuration string for troubleshooting purposes.
 	FlowConfigOverride string `json:"flowConfigOverride,omitempty"`
-	// Fluentbit daemonset configuration.
+	// FluentbitAgent daemonset configuration.
+	// Deprecated, will be removed with next major version
+	// Migrate to the standalone NodeAgent resource
 	FluentbitSpec *FluentbitSpec `json:"fluentbit,omitempty"`
 	// Fluentd statefulset configuration
 	FluentdSpec *FluentdSpec `json:"fluentd,omitempty"`
+	// Syslog-NG statefulset configuration
+	SyslogNGSpec *SyslogNGSpec `json:"syslogNG,omitempty"`
 	// Default flow for unmatched logs. This Flow configuration collects all logs that didn't matched any other Flow.
 	DefaultFlowSpec *DefaultFlowSpec `json:"defaultFlow,omitempty"`
 	// GlobalOutput name to flush ERROR events to
 	ErrorOutputRef string `json:"errorOutputRef,omitempty"`
 	// Global filters to apply on logs before any match or filter mechanism.
 	GlobalFilters []Filter `json:"globalFilters,omitempty"`
-	// Limit namespaces to watch Flow and Output custom reasources.
+	// Limit namespaces to watch Flow and Output custom resources.
 	WatchNamespaces []string `json:"watchNamespaces,omitempty"`
+	// Cluster domain name to be used when templating URLs to services (default: "cluster.local").
+	ClusterDomain *string `json:"clusterDomain,omitempty"`
 	// Namespace for cluster wide configuration resources like CLusterFlow and ClusterOutput.
 	// This should be a protected namespace from regular users.
 	// Resources like fluentbit and fluentd will run in this namespace as well.
 	ControlNamespace string `json:"controlNamespace"`
 	// Allow configuration of cluster resources from any namespace. Mutually exclusive with ControlNamespace restriction of Cluster resources
 	AllowClusterResourcesFromAllNamespaces bool `json:"allowClusterResourcesFromAllNamespaces,omitempty"`
-	// NodeAgent Configuration
-	NodeAgents []*NodeAgent `json:"nodeAgents,omitempty"`
+	// InlineNodeAgent Configuration
+	// Deprecated, will be removed with next major version
+	NodeAgents []*InlineNodeAgent `json:"nodeAgents,omitempty"`
 	// EnableRecreateWorkloadOnImmutableFieldChange enables the operator to recreate the
 	// fluentbit daemonset and the fluentd statefulset (and possibly other resource in the future)
 	// in case there is a change in an immutable field
@@ -77,6 +86,7 @@ type LoggingSpec struct {
 // LoggingStatus defines the observed state of Logging
 type LoggingStatus struct {
 	ConfigCheckResults map[string]bool `json:"configCheckResults,omitempty"`
+	Problems           []string        `json:"problems,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -108,30 +118,38 @@ type LoggingList struct {
 type DefaultFlowSpec struct {
 	Filters []Filter `json:"filters,omitempty"`
 	// Deprecated
-	OutputRefs       []string `json:"outputRefs,omitempty"`
-	GlobalOutputRefs []string `json:"globalOutputRefs,omitempty"`
+	OutputRefs           []string `json:"outputRefs,omitempty"`
+	GlobalOutputRefs     []string `json:"globalOutputRefs,omitempty"`
+	FlowLabel            string   `json:"flowLabel,omitempty"`
+	IncludeLabelInRouter *bool    `json:"includeLabelInRouter,omitempty"`
 }
 
 const (
 	DefaultFluentbitImageRepository             = "fluent/fluent-bit"
-	DefaultFluentbitImageTag                    = "1.8.12"
-	DefaultFluentdImageRepository               = "ghcr.io/banzaicloud/fluentd"
-	DefaultFluentdImageTag                      = "v1.14.4-alpine-2"
+	DefaultFluentbitImageTag                    = "2.1.4"
+	DefaultFluentbitBufferVolumeImageRepository = "ghcr.io/kube-logging/node-exporter"
+	DefaultFluentbitBufferVolumeImageTag        = "v0.6.1"
+	DefaultFluentbitBufferStorageVolumeName     = "fluentbit-buffer"
+	DefaultFluentdImageRepository               = "ghcr.io/kube-logging/fluentd"
+	DefaultFluentdImageTag                      = "v1.15-ruby3"
 	DefaultFluentdBufferStorageVolumeName       = "fluentd-buffer"
-	DefaultFluentdDrainWatchImageRepository     = "ghcr.io/banzaicloud/fluentd-drain-watch"
-	DefaultFluentdDrainWatchImageTag            = "v0.0.1"
+	DefaultFluentdDrainWatchImageRepository     = "ghcr.io/kube-logging/fluentd-drain-watch"
+	DefaultFluentdDrainWatchImageTag            = "v0.2.0"
 	DefaultFluentdDrainPauseImageRepository     = "k8s.gcr.io/pause"
-	DefaultFluentdDrainPauseImageTag            = "latest"
+	DefaultFluentdDrainPauseImageTag            = "3.2"
 	DefaultFluentdVolumeModeImageRepository     = "busybox"
 	DefaultFluentdVolumeModeImageTag            = "latest"
-	DefaultFluentdConfigReloaderImageRepository = "jimmidyson/configmap-reload"
-	DefaultFluentdConfigReloaderImageTag        = "v0.4.0"
-	DefaultFluentdBufferVolumeImageRepository   = "quay.io/prometheus/node-exporter"
-	DefaultFluentdBufferVolumeImageTag          = "v1.1.2"
+	DefaultFluentdConfigReloaderImageRepository = "ghcr.io/kube-logging/config-reloader"
+	DefaultFluentdConfigReloaderImageTag        = "v0.0.5"
+	DefaultFluentdBufferVolumeImageRepository   = "ghcr.io/kube-logging/node-exporter"
+	DefaultFluentdBufferVolumeImageTag          = "v0.6.1"
 )
 
 // SetDefaults fills empty attributes
 func (l *Logging) SetDefaults() error {
+	if l.Spec.ClusterDomain == nil {
+		l.Spec.ClusterDomain = util.StringPointer("cluster.local")
+	}
 	if !l.Spec.FlowConfigCheckDisabled && l.Status.ConfigCheckResults == nil {
 		l.Status.ConfigCheckResults = make(map[string]bool)
 	}
@@ -297,7 +315,7 @@ func (l *Logging) SetDefaults() error {
 		if l.Spec.FluentdSpec.LivenessProbe == nil {
 			if l.Spec.FluentdSpec.LivenessDefaultCheck {
 				l.Spec.FluentdSpec.LivenessProbe = &v1.Probe{
-					Handler: v1.Handler{
+					ProbeHandler: v1.ProbeHandler{
 						Exec: &v1.ExecAction{Command: []string{"/bin/healthy.sh"}},
 					},
 					InitialDelaySeconds: 600,
@@ -351,111 +369,144 @@ func (l *Logging) SetDefaults() error {
 		}
 	}
 
-	if l.Spec.FluentbitSpec != nil { // nolint:nestif
-		if l.Spec.FluentbitSpec.PosisionDBLegacy != nil {
+	if l.Spec.SyslogNGSpec != nil {
+		if l.Spec.SyslogNGSpec.Metrics != nil {
+			if l.Spec.SyslogNGSpec.Metrics.Path == "" {
+				l.Spec.SyslogNGSpec.Metrics.Path = "/metrics"
+			}
+			if l.Spec.SyslogNGSpec.Metrics.Port == 0 {
+				l.Spec.SyslogNGSpec.Metrics.Port = 9577
+			}
+			if l.Spec.SyslogNGSpec.Metrics.Timeout == "" {
+				l.Spec.SyslogNGSpec.Metrics.Timeout = "5s"
+			}
+			if l.Spec.SyslogNGSpec.Metrics.Interval == "" {
+				l.Spec.SyslogNGSpec.Metrics.Interval = "15s"
+			}
+		}
+	}
+
+	return nil
+}
+
+func FluentBitDefaults(fluentbitSpec *FluentbitSpec) error {
+	if fluentbitSpec != nil { // nolint:nestif
+		if fluentbitSpec.PosisionDBLegacy != nil {
 			return errors.New("`position_db` field is deprecated, use `positiondb`")
 		}
-		if l.Spec.FluentbitSpec.Parser != "" {
+		if fluentbitSpec.Parser != "" {
 			return errors.New("`parser` field is deprecated, use `inputTail.Parser`")
 		}
-		if l.Spec.FluentbitSpec.Image.Repository == "" {
-			l.Spec.FluentbitSpec.Image.Repository = DefaultFluentbitImageRepository
+		if fluentbitSpec.Image.Repository == "" {
+			fluentbitSpec.Image.Repository = DefaultFluentbitImageRepository
 		}
-		if l.Spec.FluentbitSpec.Image.Tag == "" {
-			l.Spec.FluentbitSpec.Image.Tag = DefaultFluentbitImageTag
+		if fluentbitSpec.Image.Tag == "" {
+			fluentbitSpec.Image.Tag = DefaultFluentbitImageTag
 		}
-		if l.Spec.FluentbitSpec.Image.PullPolicy == "" {
-			l.Spec.FluentbitSpec.Image.PullPolicy = "IfNotPresent"
+		if fluentbitSpec.Image.PullPolicy == "" {
+			fluentbitSpec.Image.PullPolicy = "IfNotPresent"
 		}
-		if l.Spec.FluentbitSpec.Flush == 0 {
-			l.Spec.FluentbitSpec.Flush = 1
+		if fluentbitSpec.Flush == 0 {
+			fluentbitSpec.Flush = 1
 		}
-		if l.Spec.FluentbitSpec.Grace == 0 {
-			l.Spec.FluentbitSpec.Grace = 5
+		if fluentbitSpec.Grace == 0 {
+			fluentbitSpec.Grace = 5
 		}
-		if l.Spec.FluentbitSpec.LogLevel == "" {
-			l.Spec.FluentbitSpec.LogLevel = "info"
+		if fluentbitSpec.LogLevel == "" {
+			fluentbitSpec.LogLevel = "info"
 		}
-		if l.Spec.FluentbitSpec.CoroStackSize == 0 {
-			l.Spec.FluentbitSpec.CoroStackSize = 24576
+		if fluentbitSpec.CoroStackSize == 0 {
+			fluentbitSpec.CoroStackSize = 24576
 		}
-		if l.Spec.FluentbitSpec.Resources.Limits == nil {
-			l.Spec.FluentbitSpec.Resources.Limits = v1.ResourceList{
+		if fluentbitSpec.Resources.Limits == nil {
+			fluentbitSpec.Resources.Limits = v1.ResourceList{
 				v1.ResourceMemory: resource.MustParse("100M"),
 				v1.ResourceCPU:    resource.MustParse("200m"),
 			}
 		}
-		if l.Spec.FluentbitSpec.Resources.Requests == nil {
-			l.Spec.FluentbitSpec.Resources.Requests = v1.ResourceList{
+		if fluentbitSpec.Resources.Requests == nil {
+			fluentbitSpec.Resources.Requests = v1.ResourceList{
 				v1.ResourceMemory: resource.MustParse("50M"),
 				v1.ResourceCPU:    resource.MustParse("100m"),
 			}
 		}
-		if l.Spec.FluentbitSpec.InputTail.Path == "" {
-			l.Spec.FluentbitSpec.InputTail.Path = "/var/log/containers/*.log"
+		if fluentbitSpec.InputTail.Path == "" {
+			fluentbitSpec.InputTail.Path = "/var/log/containers/*.log"
 		}
-		if l.Spec.FluentbitSpec.InputTail.RefreshInterval == "" {
-			l.Spec.FluentbitSpec.InputTail.RefreshInterval = "5"
+		if fluentbitSpec.InputTail.RefreshInterval == "" {
+			fluentbitSpec.InputTail.RefreshInterval = "5"
 		}
-		if l.Spec.FluentbitSpec.InputTail.SkipLongLines == "" {
-			l.Spec.FluentbitSpec.InputTail.SkipLongLines = "On"
+		if fluentbitSpec.InputTail.SkipLongLines == "" {
+			fluentbitSpec.InputTail.SkipLongLines = "On"
 		}
-		if l.Spec.FluentbitSpec.InputTail.DB == nil {
-			l.Spec.FluentbitSpec.InputTail.DB = util.StringPointer("/tail-db/tail-containers-state.db")
+		if fluentbitSpec.InputTail.DB == nil {
+			fluentbitSpec.InputTail.DB = util.StringPointer("/tail-db/tail-containers-state.db")
 		}
-		if l.Spec.FluentbitSpec.InputTail.MemBufLimit == "" {
-			l.Spec.FluentbitSpec.InputTail.MemBufLimit = "5MB"
+		if fluentbitSpec.InputTail.DBLocking == nil {
+			fluentbitSpec.InputTail.DBLocking = util.BoolPointer(true)
 		}
-		if l.Spec.FluentbitSpec.InputTail.Tag == "" {
-			l.Spec.FluentbitSpec.InputTail.Tag = "kubernetes.*"
+		if fluentbitSpec.InputTail.MemBufLimit == "" {
+			fluentbitSpec.InputTail.MemBufLimit = "5MB"
 		}
-		if l.Spec.FluentbitSpec.Annotations == nil {
-			l.Spec.FluentbitSpec.Annotations = make(map[string]string)
+		if fluentbitSpec.InputTail.Tag == "" {
+			fluentbitSpec.InputTail.Tag = "kubernetes.*"
 		}
-		if l.Spec.FluentbitSpec.Security == nil {
-			l.Spec.FluentbitSpec.Security = &Security{}
+		if fluentbitSpec.Annotations == nil {
+			fluentbitSpec.Annotations = make(map[string]string)
 		}
-		if l.Spec.FluentbitSpec.Security.RoleBasedAccessControlCreate == nil {
-			l.Spec.FluentbitSpec.Security.RoleBasedAccessControlCreate = util.BoolPointer(true)
+		if fluentbitSpec.Security == nil {
+			fluentbitSpec.Security = &Security{}
 		}
-		if l.Spec.FluentbitSpec.Security.SecurityContext == nil {
-			l.Spec.FluentbitSpec.Security.SecurityContext = &v1.SecurityContext{}
+		if fluentbitSpec.Security.RoleBasedAccessControlCreate == nil {
+			fluentbitSpec.Security.RoleBasedAccessControlCreate = util.BoolPointer(true)
 		}
-		if l.Spec.FluentbitSpec.Security.PodSecurityContext == nil {
-			l.Spec.FluentbitSpec.Security.PodSecurityContext = &v1.PodSecurityContext{}
+		if fluentbitSpec.BufferVolumeImage.Repository == "" {
+			fluentbitSpec.BufferVolumeImage.Repository = DefaultFluentbitBufferVolumeImageRepository
 		}
-		if l.Spec.FluentbitSpec.Metrics != nil {
-			if l.Spec.FluentbitSpec.Metrics.Path == "" {
-				l.Spec.FluentbitSpec.Metrics.Path = "/api/v1/metrics/prometheus"
+		if fluentbitSpec.BufferVolumeImage.Tag == "" {
+			fluentbitSpec.BufferVolumeImage.Tag = DefaultFluentbitBufferVolumeImageTag
+		}
+		if fluentbitSpec.BufferVolumeImage.PullPolicy == "" {
+			fluentbitSpec.BufferVolumeImage.PullPolicy = "IfNotPresent"
+		}
+		if fluentbitSpec.Security.SecurityContext == nil {
+			fluentbitSpec.Security.SecurityContext = &v1.SecurityContext{}
+		}
+		if fluentbitSpec.Security.PodSecurityContext == nil {
+			fluentbitSpec.Security.PodSecurityContext = &v1.PodSecurityContext{}
+		}
+		if fluentbitSpec.Metrics != nil {
+			if fluentbitSpec.Metrics.Path == "" {
+				fluentbitSpec.Metrics.Path = "/api/v1/metrics/prometheus"
 			}
-			if l.Spec.FluentbitSpec.Metrics.Port == 0 {
-				l.Spec.FluentbitSpec.Metrics.Port = 2020
+			if fluentbitSpec.Metrics.Port == 0 {
+				fluentbitSpec.Metrics.Port = 2020
 			}
-			if l.Spec.FluentbitSpec.Metrics.Timeout == "" {
-				l.Spec.FluentbitSpec.Metrics.Timeout = "5s"
+			if fluentbitSpec.Metrics.Timeout == "" {
+				fluentbitSpec.Metrics.Timeout = "5s"
 			}
-			if l.Spec.FluentbitSpec.Metrics.Interval == "" {
-				l.Spec.FluentbitSpec.Metrics.Interval = "15s"
+			if fluentbitSpec.Metrics.Interval == "" {
+				fluentbitSpec.Metrics.Interval = "15s"
 			}
-			if l.Spec.FluentbitSpec.Metrics.PrometheusAnnotations {
-				l.Spec.FluentbitSpec.Annotations["prometheus.io/scrape"] = "true"
-				l.Spec.FluentbitSpec.Annotations["prometheus.io/path"] = l.Spec.FluentbitSpec.Metrics.Path
-				l.Spec.FluentbitSpec.Annotations["prometheus.io/port"] = fmt.Sprintf("%d", l.Spec.FluentbitSpec.Metrics.Port)
+			if fluentbitSpec.Metrics.PrometheusAnnotations {
+				fluentbitSpec.Annotations["prometheus.io/scrape"] = "true"
+				fluentbitSpec.Annotations["prometheus.io/path"] = fluentbitSpec.Metrics.Path
+				fluentbitSpec.Annotations["prometheus.io/port"] = fmt.Sprintf("%d", fluentbitSpec.Metrics.Port)
 			}
-		} else if l.Spec.FluentbitSpec.LivenessDefaultCheck {
-			l.Spec.FluentbitSpec.Metrics = &Metrics{
+		} else if fluentbitSpec.LivenessDefaultCheck {
+			fluentbitSpec.Metrics = &Metrics{
 				Port: 2020,
 				Path: "/",
 			}
 		}
-		if l.Spec.FluentbitSpec.LivenessProbe == nil {
-			if l.Spec.FluentbitSpec.LivenessDefaultCheck {
-				l.Spec.FluentbitSpec.LivenessProbe = &v1.Probe{
-					Handler: v1.Handler{
+		if fluentbitSpec.LivenessProbe == nil {
+			if fluentbitSpec.LivenessDefaultCheck {
+				fluentbitSpec.LivenessProbe = &v1.Probe{
+					ProbeHandler: v1.ProbeHandler{
 						HTTPGet: &v1.HTTPGetAction{
-							Path: l.Spec.FluentbitSpec.Metrics.Path,
+							Path: fluentbitSpec.Metrics.Path,
 							Port: intstr.IntOrString{
-								IntVal: l.Spec.FluentbitSpec.Metrics.Port,
+								IntVal: fluentbitSpec.Metrics.Port,
 							},
 						}},
 					InitialDelaySeconds: 10,
@@ -467,55 +518,61 @@ func (l *Logging) SetDefaults() error {
 			}
 		}
 
-		if l.Spec.FluentbitSpec.MountPath == "" {
-			l.Spec.FluentbitSpec.MountPath = "/var/lib/docker/containers"
+		if fluentbitSpec.MountPath == "" {
+			fluentbitSpec.MountPath = "/var/lib/docker/containers"
 		}
-		if l.Spec.FluentbitSpec.BufferStorage.StoragePath == "" {
-			l.Spec.FluentbitSpec.BufferStorage.StoragePath = "/buffers"
+		if fluentbitSpec.BufferStorage.StoragePath == "" {
+			fluentbitSpec.BufferStorage.StoragePath = "/buffers"
 		}
-		if l.Spec.FluentbitSpec.FilterAws != nil {
-			if l.Spec.FluentbitSpec.FilterAws.ImdsVersion == "" {
-				l.Spec.FluentbitSpec.FilterAws.ImdsVersion = "v2"
+		if fluentbitSpec.FilterAws != nil {
+			if fluentbitSpec.FilterAws.ImdsVersion == "" {
+				fluentbitSpec.FilterAws.ImdsVersion = "v2"
 			}
-			if l.Spec.FluentbitSpec.FilterAws.AZ == nil {
-				l.Spec.FluentbitSpec.FilterAws.AZ = util.BoolPointer(true)
+			if fluentbitSpec.FilterAws.AZ == nil {
+				fluentbitSpec.FilterAws.AZ = util.BoolPointer(true)
 			}
-			if l.Spec.FluentbitSpec.FilterAws.Ec2InstanceID == nil {
-				l.Spec.FluentbitSpec.FilterAws.Ec2InstanceID = util.BoolPointer(true)
+			if fluentbitSpec.FilterAws.Ec2InstanceID == nil {
+				fluentbitSpec.FilterAws.Ec2InstanceID = util.BoolPointer(true)
 			}
-			if l.Spec.FluentbitSpec.FilterAws.Ec2InstanceType == nil {
-				l.Spec.FluentbitSpec.FilterAws.Ec2InstanceType = util.BoolPointer(false)
+			if fluentbitSpec.FilterAws.Ec2InstanceType == nil {
+				fluentbitSpec.FilterAws.Ec2InstanceType = util.BoolPointer(false)
 			}
-			if l.Spec.FluentbitSpec.FilterAws.PrivateIP == nil {
-				l.Spec.FluentbitSpec.FilterAws.PrivateIP = util.BoolPointer(false)
+			if fluentbitSpec.FilterAws.PrivateIP == nil {
+				fluentbitSpec.FilterAws.PrivateIP = util.BoolPointer(false)
 			}
-			if l.Spec.FluentbitSpec.FilterAws.AmiID == nil {
-				l.Spec.FluentbitSpec.FilterAws.AmiID = util.BoolPointer(false)
+			if fluentbitSpec.FilterAws.AmiID == nil {
+				fluentbitSpec.FilterAws.AmiID = util.BoolPointer(false)
 			}
-			if l.Spec.FluentbitSpec.FilterAws.AccountID == nil {
-				l.Spec.FluentbitSpec.FilterAws.AccountID = util.BoolPointer(false)
+			if fluentbitSpec.FilterAws.AccountID == nil {
+				fluentbitSpec.FilterAws.AccountID = util.BoolPointer(false)
 			}
-			if l.Spec.FluentbitSpec.FilterAws.Hostname == nil {
-				l.Spec.FluentbitSpec.FilterAws.Hostname = util.BoolPointer(false)
+			if fluentbitSpec.FilterAws.Hostname == nil {
+				fluentbitSpec.FilterAws.Hostname = util.BoolPointer(false)
 			}
-			if l.Spec.FluentbitSpec.FilterAws.VpcID == nil {
-				l.Spec.FluentbitSpec.FilterAws.VpcID = util.BoolPointer(false)
+			if fluentbitSpec.FilterAws.VpcID == nil {
+				fluentbitSpec.FilterAws.VpcID = util.BoolPointer(false)
 			}
 		}
-		if l.Spec.FluentbitSpec.ForwardOptions == nil {
-			l.Spec.FluentbitSpec.ForwardOptions = &ForwardOptions{}
+		if len(fluentbitSpec.FilterKubernetes.UseKubelet) == 0 {
+			fluentbitSpec.FilterKubernetes.UseKubelet = "Off"
 		}
-		if l.Spec.FluentbitSpec.ForwardOptions.RetryLimit == "" {
-			l.Spec.FluentbitSpec.ForwardOptions.RetryLimit = "False"
+		if fluentbitSpec.FilterKubernetes.UseKubelet == "On" {
+			fluentbitSpec.DNSPolicy = "ClusterFirstWithHostNet"
+			fluentbitSpec.HostNetwork = true
 		}
-		if l.Spec.FluentbitSpec.TLS == nil {
-			l.Spec.FluentbitSpec.TLS = &FluentbitTLS{}
+		if fluentbitSpec.ForwardOptions == nil {
+			fluentbitSpec.ForwardOptions = &ForwardOptions{}
 		}
-		if l.Spec.FluentbitSpec.TLS.Enabled == nil {
-			l.Spec.FluentbitSpec.TLS.Enabled = util.BoolPointer(false)
+		if fluentbitSpec.ForwardOptions.RetryLimit == "" {
+			fluentbitSpec.ForwardOptions.RetryLimit = "False"
+		}
+		if fluentbitSpec.TLS == nil {
+			fluentbitSpec.TLS = &FluentbitTLS{}
+		}
+		if fluentbitSpec.TLS.Enabled == nil {
+			fluentbitSpec.TLS.Enabled = util.BoolPointer(false)
 		}
 	}
-
 	return nil
 }
 
@@ -535,6 +592,16 @@ func (l *Logging) SetDefaultsOnCopy() (*Logging, error) {
 // QualifiedName is the "logging-resource" name combined
 func (l *Logging) QualifiedName(name string) string {
 	return fmt.Sprintf("%s-%s", l.Name, name)
+}
+
+// ClusterDomainAsSuffix formats the cluster domain as a suffix, e.g.:
+// .Spec.ClusterDomain == "", returns ""
+// .Spec.ClusterDomain == "cluster.local", returns ".cluster.local"
+func (l *Logging) ClusterDomainAsSuffix() string {
+	if l.Spec.ClusterDomain == nil || *l.Spec.ClusterDomain == "" {
+		return ""
+	}
+	return fmt.Sprintf(".%s", *l.Spec.ClusterDomain)
 }
 
 func init() {
@@ -569,6 +636,35 @@ func (l *Logging) GetFluentdLabels(component string) map[string]string {
 		l.Spec.FluentdSpec.Labels,
 		map[string]string{
 			"app.kubernetes.io/name":      "fluentd",
+			"app.kubernetes.io/component": component,
+		},
+		GenerateLoggingRefLabels(l.ObjectMeta.GetName()),
+	)
+}
+
+// SyslogNGObjectMeta creates an objectMeta for resource syslog-ng
+func (l *Logging) SyslogNGObjectMeta(name, component string) metav1.ObjectMeta {
+	o := metav1.ObjectMeta{
+		Name:      l.QualifiedName(name),
+		Namespace: l.Spec.ControlNamespace,
+		Labels:    l.GetSyslogNGLabels(component),
+		OwnerReferences: []metav1.OwnerReference{
+			{
+				APIVersion: l.APIVersion,
+				Kind:       l.Kind,
+				Name:       l.Name,
+				UID:        l.UID,
+				Controller: util.BoolPointer(true),
+			},
+		},
+	}
+	return o
+}
+
+func (l *Logging) GetSyslogNGLabels(component string) map[string]string {
+	return util.MergeLabels(
+		map[string]string{
+			"app.kubernetes.io/name":      "syslog-ng",
 			"app.kubernetes.io/component": component,
 		},
 		GenerateLoggingRefLabels(l.ObjectMeta.GetName()),

@@ -15,8 +15,8 @@
 package filter
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"Dedot"
@@ -43,30 +43,36 @@ type DedotFilterConfig struct {
 	Separator string `json:"de_dot_separator,omitempty"`
 }
 
-// #### Example `Dedot` filter configurations
+// ## Example `Dedot` filter configurations
 // ```yaml
-//apiVersion: logging.banzaicloud.io/v1beta1
-//kind: Flow
-//metadata:
-//  name: demo-flow
-//spec:
-//  filters:
-//    - dedot:
-//        de_dot_separator: "-"
-//        de_dot_nested: true
-//  selectors: {}
-//  localOutputRefs:
-//    - demo-output
+// apiVersion: logging.banzaicloud.io/v1beta1
+// kind: Flow
+// metadata:
+//
+//	name: demo-flow
+//
+// spec:
+//
+//	filters:
+//	  - dedot:
+//	      de_dot_separator: "-"
+//	      de_dot_nested: true
+//	selectors: {}
+//	localOutputRefs:
+//	  - demo-output
+//
 // ```
 //
 // #### Fluentd Config Result
 // ```yaml
-//<filter **>
-//  @type dedot
-//  @id test_dedot
-//  de_dot_nested true
-//  de_dot_separator -
-//</filter>
+// <filter **>
+//
+//	@type dedot
+//	@id test_dedot
+//	de_dot_nested true
+//	de_dot_separator -
+//
+// </filter>
 // ```
 type _expDedot interface{} //nolint:deadcode,unused
 

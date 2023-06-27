@@ -15,8 +15,8 @@
 package output
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"LogDNA"
@@ -25,7 +25,7 @@ type _hugoLogDNA interface{} //nolint:deadcode,unused
 
 // +kubebuilder:object:generate=true
 // +docName:"[LogDNA Output](https://github.com/logdna/fluent-plugin-logdna)"
-// This plugin has been designed to output logs to LogDNA. Example Deployment: [Transport Nginx Access Logs into LogDNA with Logging Operator](https://raw.githubusercontent.com/banzaicloud/logging-operator/master/docs/examples/logging_output_logdna.yaml)
+// This plugin has been designed to output logs to LogDNA.
 type _docLogDNA interface{} //nolint:deadcode,unused
 
 // +name:"LogDNA"
@@ -55,33 +55,43 @@ type LogDNAOutput struct {
 	IngesterEndpoint string `json:"ingester_endpoint,omitempty"`
 	// +docLink:"Buffer,../buffer/"
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, fluentd logs warning message and increases metric fluentd_output_status_slow_flush_count.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
 }
 
-// #### Example `LogDNA` filter configurations
-// ```
+// ## Example `LogDNA` filter configurations
+// ```yaml
 // apiVersion: logging.banzaicloud.io/v1beta1
 // kind: Output
 // metadata:
-//   name: logdna-output-sample
+//
+//	name: logdna-output-sample
+//
 // spec:
-//   logdna:
-//     api_key: xxxxxxxxxxxxxxxxxxxxxxxxxxx
-//     hostname: logging-operator
-//     app: my-app
-//     tags: web,dev
-//     ingester_domain https://logs.logdna.com
-//     ingester_endpoint /logs/ingest
+//
+//	logdna:
+//	  api_key: xxxxxxxxxxxxxxxxxxxxxxxxxxx
+//	  hostname: logging-operator
+//	  app: my-app
+//	  tags: web,dev
+//	  ingester_domain https://logs.logdna.com
+//	  ingester_endpoint /logs/ingest
+//
 // ```
 //
 // #### Fluentd Config Result
 // ```
-//<match **>
+// <match **>
+//
 //	@type logdna
 //	@id test_logdna
 //	api_key xxxxxxxxxxxxxxxxxxxxxxxxxxy
 //	app my-app
 //	hostname logging-operator
-//</match>
+//
+// </match>
 // ```
 type _expLogDNA interface{} //nolint:deadcode,unused
 

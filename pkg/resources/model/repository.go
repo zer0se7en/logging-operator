@@ -16,22 +16,27 @@ package model
 
 import (
 	"context"
+	"os"
 	"sort"
 
 	"emperror.dev/errors"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
 )
 
-func NewLoggingResourceRepository(client client.Reader) *LoggingResourceRepository {
+func NewLoggingResourceRepository(client client.Reader, logger logr.Logger) *LoggingResourceRepository {
 	return &LoggingResourceRepository{
 		Client: client,
+		Logger: logger,
 	}
 }
 
 type LoggingResourceRepository struct {
 	Client client.Reader
+	Logger logr.Logger
 }
 
 func (r LoggingResourceRepository) LoggingResourcesFor(ctx context.Context, logging v1beta1.Logging) (res LoggingResources, errs error) {
@@ -39,10 +44,22 @@ func (r LoggingResourceRepository) LoggingResourcesFor(ctx context.Context, logg
 
 	var err error
 
-	res.ClusterFlows, err = r.ClusterFlowsFor(ctx, logging)
+	res.Fluentd.ClusterFlows, err = r.ClusterFlowsFor(ctx, logging)
 	errs = errors.Append(errs, err)
 
-	res.ClusterOutputs, err = r.ClusterOutputsFor(ctx, logging)
+	res.Fluentd.ClusterOutputs, err = r.ClusterOutputsFor(ctx, logging)
+	errs = errors.Append(errs, err)
+
+	res.SyslogNG.ClusterFlows, err = r.SyslogNGClusterFlowsFor(ctx, logging)
+	errs = errors.Append(errs, err)
+
+	res.SyslogNG.ClusterOutputs, err = r.SyslogNGClusterOutputsFor(ctx, logging)
+	errs = errors.Append(errs, err)
+
+	res.NodeAgents, err = r.NodeAgentsFor(ctx, logging)
+	errs = errors.Append(errs, err)
+
+	res.Fluentbits, err = r.FluentbitsFor(ctx, logging)
 	errs = errors.Append(errs, err)
 
 	watchNamespaces := logging.Spec.WatchNamespaces
@@ -60,13 +77,29 @@ func (r LoggingResourceRepository) LoggingResourcesFor(ctx context.Context, logg
 	sort.Strings(watchNamespaces)
 
 	for _, ns := range watchNamespaces {
-		flows, err := r.FlowsInNamespaceFor(ctx, ns, logging)
-		res.Flows = append(res.Flows, flows...)
-		errs = errors.Append(errs, err)
+		{
+			flows, err := r.FlowsInNamespaceFor(ctx, ns, logging)
+			res.Fluentd.Flows = append(res.Fluentd.Flows, flows...)
+			errs = errors.Append(errs, err)
+		}
 
-		outputs, err := r.OutputsInNamespaceFor(ctx, ns, logging)
-		res.Outputs = append(res.Outputs, outputs...)
-		errs = errors.Append(errs, err)
+		{
+			outputs, err := r.OutputsInNamespaceFor(ctx, ns, logging)
+			res.Fluentd.Outputs = append(res.Fluentd.Outputs, outputs...)
+			errs = errors.Append(errs, err)
+		}
+
+		{
+			flows, err := r.SyslogNGFlowsInNamespaceFor(ctx, ns, logging)
+			res.SyslogNG.Flows = append(res.SyslogNG.Flows, flows...)
+			errs = errors.Append(errs, err)
+		}
+
+		{
+			outputs, err := r.SyslogNGOutputsInNamespaceFor(ctx, ns, logging)
+			res.SyslogNG.Outputs = append(res.SyslogNG.Outputs, outputs...)
+			errs = errors.Append(errs, err)
+		}
 	}
 
 	return
@@ -140,6 +173,125 @@ func (r LoggingResourceRepository) OutputsInNamespaceFor(ctx context.Context, na
 	})
 
 	var res []v1beta1.Output
+	for _, i := range list.Items {
+		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
+			res = append(res, i)
+		}
+	}
+	return res, nil
+}
+
+func (r LoggingResourceRepository) SyslogNGClusterFlowsFor(ctx context.Context, logging v1beta1.Logging) ([]v1beta1.SyslogNGClusterFlow, error) {
+	var list v1beta1.SyslogNGClusterFlowList
+	if err := r.Client.List(ctx, &list, clusterResourceListOpts(logging)...); err != nil {
+		return nil, err
+	}
+
+	sort.Slice(list.Items, func(i, j int) bool {
+		return lessByNamespacedName(&list.Items[i], &list.Items[j])
+	})
+
+	var res []v1beta1.SyslogNGClusterFlow
+	for _, i := range list.Items {
+		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
+			res = append(res, i)
+		}
+	}
+	return res, nil
+}
+
+func (r LoggingResourceRepository) SyslogNGClusterOutputsFor(ctx context.Context, logging v1beta1.Logging) ([]v1beta1.SyslogNGClusterOutput, error) {
+	var list v1beta1.SyslogNGClusterOutputList
+	if err := r.Client.List(ctx, &list, clusterResourceListOpts(logging)...); err != nil {
+		return nil, err
+	}
+
+	sort.Slice(list.Items, func(i, j int) bool {
+		return lessByNamespacedName(&list.Items[i], &list.Items[j])
+	})
+
+	var res []v1beta1.SyslogNGClusterOutput
+	for _, i := range list.Items {
+		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
+			res = append(res, i)
+		}
+	}
+	return res, nil
+}
+
+func (r LoggingResourceRepository) SyslogNGFlowsInNamespaceFor(ctx context.Context, namespace string, logging v1beta1.Logging) ([]v1beta1.SyslogNGFlow, error) {
+	var list v1beta1.SyslogNGFlowList
+	if err := r.Client.List(ctx, &list, client.InNamespace(namespace)); err != nil {
+		return nil, err
+	}
+
+	sort.Slice(list.Items, func(i, j int) bool {
+		return lessByNamespacedName(&list.Items[i], &list.Items[j])
+	})
+
+	var res []v1beta1.SyslogNGFlow
+	for _, i := range list.Items {
+		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
+			res = append(res, i)
+		}
+	}
+	return res, nil
+}
+
+func (r LoggingResourceRepository) SyslogNGOutputsInNamespaceFor(ctx context.Context, namespace string, logging v1beta1.Logging) ([]v1beta1.SyslogNGOutput, error) {
+	var list v1beta1.SyslogNGOutputList
+	if err := r.Client.List(ctx, &list, client.InNamespace(namespace)); err != nil {
+		return nil, err
+	}
+
+	sort.Slice(list.Items, func(i, j int) bool {
+		return lessByNamespacedName(&list.Items[i], &list.Items[j])
+	})
+
+	var res []v1beta1.SyslogNGOutput
+	for _, i := range list.Items {
+		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
+			res = append(res, i)
+		}
+	}
+	return res, nil
+}
+
+func (r LoggingResourceRepository) NodeAgentsFor(ctx context.Context, logging v1beta1.Logging) ([]v1beta1.NodeAgent, error) {
+	if os.Getenv("ENABLE_NODEAGENT_CRD") == "" {
+		r.Logger.Info("processing NodeAgent CRDs is explicitly disabled (enable: ENABLE_NODEAGENT_CRD=1)")
+		return nil, nil
+	}
+
+	var list v1beta1.NodeAgentList
+	if err := r.Client.List(ctx, &list); err != nil {
+		return nil, err
+	}
+
+	sort.Slice(list.Items, func(i, j int) bool {
+		return lessByNamespacedName(&list.Items[i], &list.Items[j])
+	})
+
+	var res []v1beta1.NodeAgent
+	for _, i := range list.Items {
+		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
+			res = append(res, i)
+		}
+	}
+	return res, nil
+}
+
+func (r LoggingResourceRepository) FluentbitsFor(ctx context.Context, logging v1beta1.Logging) ([]v1beta1.FluentbitAgent, error) {
+	var list v1beta1.FluentbitAgentList
+	if err := r.Client.List(ctx, &list); err != nil {
+		return nil, err
+	}
+
+	sort.Slice(list.Items, func(i, j int) bool {
+		return lessByNamespacedName(&list.Items[i], &list.Items[j])
+	})
+
+	var res []v1beta1.FluentbitAgent
 	for _, i := range list.Items {
 		if i.Spec.LoggingRef == logging.Spec.LoggingRef {
 			res = append(res, i)

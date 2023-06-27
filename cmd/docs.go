@@ -20,7 +20,7 @@ import (
 
 	"emperror.dev/errors"
 	"github.com/MakeNowJust/heredoc"
-	"github.com/banzaicloud/operator-tools/pkg/docgen"
+	"github.com/cisco-open/operator-tools/pkg/docgen"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
@@ -34,9 +34,11 @@ func main() {
 func plugins() {
 	lister := docgen.NewSourceLister(
 		map[string]docgen.SourceDir{
-			"filters": {Path: "pkg/sdk/logging/model/filter", DestPath: "docs/configuration/plugins/filters"},
-			"outputs": {Path: "pkg/sdk/logging/model/output", DestPath: "docs/configuration/plugins/outputs"},
-			"common":  {Path: "pkg/sdk/logging/model/common", DestPath: "docs/configuration/plugins/common"},
+			"filters":          {Path: "pkg/sdk/logging/model/filter", DestPath: "docs/configuration/plugins/filters"},
+			"outputs":          {Path: "pkg/sdk/logging/model/output", DestPath: "docs/configuration/plugins/outputs"},
+			"common":           {Path: "pkg/sdk/logging/model/common", DestPath: "docs/configuration/plugins/common"},
+			"syslogng-outputs": {Path: "pkg/sdk/logging/model/syslogng/output", DestPath: "docs/configuration/plugins/syslogng-outputs"},
+			"syslogng-filters": {Path: "pkg/sdk/logging/model/syslogng/filter", DestPath: "docs/configuration/plugins/syslogng-filters"},
 		},
 		logger.WithName("pluginlister"))
 
@@ -60,8 +62,6 @@ func plugins() {
 		title: Supported Plugins
 		generated_file: true
 		---
-
-		# Supported Plugins
 		
 		For more information please click on the plugin name
 		<center>

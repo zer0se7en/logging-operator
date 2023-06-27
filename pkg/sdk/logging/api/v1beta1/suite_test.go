@@ -16,16 +16,16 @@ package v1beta1_test
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
 	"github.com/go-logr/zapr"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"k8s.io/client-go/kubernetes/scheme"
@@ -44,11 +44,7 @@ var testEnv *envtest.Environment
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecsWithDefaultAndCustomReporters(t,
-		"v1beta1 Suite",
-		[]Reporter{
-			printer.NewlineReporter{},
-		})
+	RunSpecs(t, "v1beta1 Suite")
 }
 
 var _ = BeforeSuite(func(done Done) {
@@ -61,7 +57,7 @@ var _ = BeforeSuite(func(done Done) {
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "..", "..", "config", "crd", "bases")},
-		BinaryAssetsDirectory: filepath.Join("..", "..", "..", "..", "..", "testbin", "bin"),
+		BinaryAssetsDirectory: os.Getenv("ENVTEST_BINARY_ASSETS"),
 	}
 
 	err = v1beta1.SchemeBuilder.AddToScheme(scheme.Scheme)

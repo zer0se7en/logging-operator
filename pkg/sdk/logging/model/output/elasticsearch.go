@@ -15,8 +15,8 @@
 package output
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"Elasticsearch"
@@ -24,22 +24,24 @@ import (
 type _hugoElasticsearch interface{} //nolint:deadcode,unused
 
 // +docName:"Elasticsearch output plugin for Fluentd"
-//More info at https://github.com/uken/fluent-plugin-elasticsearch
-//>Example Deployment: [Save all logs to ElasticSearch](../../../../quickstarts/es-nginx/)
+// More info at https://github.com/uken/fluent-plugin-elasticsearch
+// >Example Deployment: [Save all logs to ElasticSearch](../../../../quickstarts/es-nginx/)
 //
-// #### Example output configurations
-// ```
+// ## Example output configurations
+// ```yaml
 // spec:
-//   elasticsearch:
-//     host: elasticsearch-elasticsearch-cluster.default.svc.cluster.local
-//     port: 9200
-//     scheme: https
-//     ssl_verify: false
-//     ssl_version: TLSv1_2
-//     buffer:
-//       timekey: 1m
-//       timekey_wait: 30s
-//       timekey_use_utc: true
+//
+//	elasticsearch:
+//	  host: elasticsearch-elasticsearch-cluster.default.svc.cluster.local
+//	  port: 9200
+//	  scheme: https
+//	  ssl_verify: false
+//	  ssl_version: TLSv1_2
+//	  buffer:
+//	    timekey: 1m
+//	    timekey_wait: 30s
+//	    timekey_use_utc: true
+//
 // ```
 type _docElasticsearch interface{} //nolint:deadcode,unused
 
@@ -142,6 +144,9 @@ type ElasticsearchOutput struct {
 	// Indicates whether to fail when max_retry_putting_template is exceeded. If you have multiple output plugin, you could use this property to do not fail on fluentd statup.(default: true)
 	// +kubebuilder:validation:Optional
 	FailOnPuttingTemplateRetryExceed *bool `json:"fail_on_putting_template_retry_exceed,omitempty" plugin:"default:true"`
+	// fail_on_detecting_es_version_retry_exceed (default: true)
+	// +kubebuilder:validation:Optional
+	FailOnDetectingEsVersionRetryExceed *bool `json:"fail_on_detecting_es_version_retry_exceed,omitempty" plugin:"default:true"`
 	// You can specify times of retry obtaining Elasticsearch version.(default: 15)
 	MaxRetryGetEsVersion string `json:"max_retry_get_es_version,omitempty"`
 	// You can specify HTTP request timeout.(default: 5s)
@@ -163,6 +168,8 @@ type ElasticsearchOutput struct {
 	IdKey string `json:"id_key,omitempty"`
 	// Similar to parent_key config, will add _routing into elasticsearch command if routing_key is set and the field does exist in input event.
 	RoutingKey string `json:"routing_key,omitempty"`
+	// https://github.com/uken/fluent-plugin-elasticsearch#remove_keys
+	RemoveKeys string `json:"remove_keys,omitempty"`
 	// Remove keys on update will not update the configured keys in elasticsearch when a record is being updated. This setting only has any effect if the write operation is update or upsert.
 	RemoveKeysOnUpdate string `json:"remove_keys_on_update,omitempty"`
 	// This setting allows remove_keys_on_update to be configured with a key in each record, in much the same way as target_index_key works.
@@ -228,6 +235,10 @@ type ElasticsearchOutput struct {
 	SnifferClassName string `json:"sniffer_class_name,omitempty"`
 	// +docLink:"Buffer,../buffer/"
 	Buffer *Buffer `json:"buffer,omitempty"`
+	// The threshold for chunk flush performance check.
+	// Parameter type is float, not time, default: 20.0 (seconds)
+	// If chunk flush takes longer time than this threshold, fluentd logs warning message and increases metric fluentd_output_status_slow_flush_count.
+	SlowFlushLogThreshold string `json:"slow_flush_log_threshold,omitempty"`
 	// Enable Index Lifecycle Management (ILM).
 	EnableIlm bool `json:"enable_ilm,omitempty"`
 	// Specify ILM policy id.
@@ -237,13 +248,17 @@ type ElasticsearchOutput struct {
 	// Specify whether overwriting ilm policy or not.
 	IlmPolicyOverwrite bool `json:"ilm_policy_overwrite,omitempty"`
 	// Use @type elasticsearch_data_stream
-	DataStreamEnable *bool `json:"data_stream_enable,omitempty"`
+	DataStreamEnable *bool `json:"data_stream_enable,omitempty" plugin:"hidden"`
 	// You can specify Elasticsearch data stream name by this parameter. This parameter is mandatory for elasticsearch_data_stream. There are some limitations about naming rule. For more details https://www.elastic.co/guide/en/elasticsearch/reference/master/indices-create-data-stream.html#indices-create-data-stream-api-path-params
 	DataStreamName string `json:"data_stream_name,omitempty"`
 	// Specify an existing index template for the data stream. If not present, a new template is created and named after the data stream. (default: data_stream_name) Further details here https://github.com/uken/fluent-plugin-elasticsearch#configuration---elasticsearch-output-data-stream
 	DataStreamTemplateName string `json:"data_stream_template_name,omitempty"`
 	// Specify an existing ILM policy to be applied to the data stream. If not present, either the specified template's or a new ILM default policy is applied. (default: data_stream_name) Further details here https://github.com/uken/fluent-plugin-elasticsearch#configuration---elasticsearch-output-data-stream
 	DataStreamILMName string `json:"data_stream_ilm_name,omitempty"`
+	// Specify data stream ILM policy contents as Hash.
+	DataStreamIlmPolicy string `json:"data_stream_ilm_policy,omitempty"`
+	// Specify whether overwriting data stream ilm policy or not.
+	DataStreamIlmPolicyOverwrite bool `json:"data_stream_ilm_policy_overwrite,omitempty"`
 }
 
 func (e *ElasticsearchOutput) ToDirective(secretLoader secret.SecretLoader, id string) (types.Directive, error) {

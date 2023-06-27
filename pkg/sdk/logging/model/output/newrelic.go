@@ -17,8 +17,8 @@ package output
 import (
 	"errors"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/types"
-	"github.com/banzaicloud/operator-tools/pkg/secret"
+	"github.com/cisco-open/operator-tools/pkg/secret"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/types"
 )
 
 // +name:"NewRelic"
@@ -26,17 +26,19 @@ import (
 type _hugoNewRelic interface{} //nolint:deadcode,unused
 
 // +docName:"New Relic Logs plugin for Fluentd"
-//**newrelic** output plugin send log data to New Relic Logs
+// **newrelic** output plugin send log data to New Relic Logs
 //
-// #### Example output configurations
-// ```
+// ## Example output configurations
+// ```yaml
 // spec:
-//   newrelic:
-//     license_key:
-//       valueFrom:
-//         secretKeyRef:
-//           name: logging-newrelic
-//           key: licenseKey
+//
+//	newrelic:
+//	  license_key:
+//	    valueFrom:
+//	      secretKeyRef:
+//	        name: logging-newrelic
+//	        key: licenseKey
+//
 // ```
 type _docNewRelic interface{} //nolint:deadcode,unused
 
@@ -60,6 +62,10 @@ type NewRelicOutputConfig struct {
 	// New Relic ingestion endpoint
 	// +docLink:"Secret,../secret/"
 	BaseURI string `json:"base_uri,omitempty" plugin:"default:https://log-api.newrelic.com/log/v1"`
+	// +docLink:"Format,../format/"
+	Format *Format `json:"format,omitempty"`
+	// +docLink:"Buffer,../buffer/"
+	Buffer *Buffer `json:"buffer,omitempty"`
 }
 
 func (c *NewRelicOutputConfig) ToDirective(secretLoader secret.SecretLoader, id string) (types.Directive, error) {
@@ -79,6 +85,21 @@ func (c *NewRelicOutputConfig) ToDirective(secretLoader secret.SecretLoader, id 
 	}
 	if err := c.validateKeys(newrelic, secretLoader); err != nil {
 		return nil, err
+	}
+	if c.Buffer == nil {
+		c.Buffer = &Buffer{}
+	}
+	if buffer, err := c.Buffer.ToDirective(secretLoader, id); err != nil {
+		return nil, err
+	} else {
+		newrelic.SubDirectives = append(newrelic.SubDirectives, buffer)
+	}
+	if c.Format != nil {
+		if format, err := c.Format.ToDirective(secretLoader, ""); err != nil {
+			return nil, err
+		} else {
+			newrelic.SubDirectives = append(newrelic.SubDirectives, format)
+		}
 	}
 	return newrelic, nil
 }

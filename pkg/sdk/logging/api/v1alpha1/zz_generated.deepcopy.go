@@ -20,7 +20,7 @@
 package v1alpha1
 
 import (
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/model/output"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/model/output"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -377,6 +377,11 @@ func (in *OutputSpec) DeepCopyInto(out *OutputSpec) {
 		*out = new(output.ElasticsearchOutput)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.OpenSearchOutput != nil {
+		in, out := &in.OpenSearchOutput, &out.OpenSearchOutput
+		*out = new(output.OpenSearchOutput)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.LogZOutput != nil {
 		in, out := &in.LogZOutput, &out.LogZOutput
 		*out = new(output.LogZOutput)
@@ -471,6 +476,11 @@ func (in *OutputSpec) DeepCopyInto(out *OutputSpec) {
 		in, out := &in.SQSOutputConfig, &out.SQSOutputConfig
 		*out = new(output.SQSOutputConfig)
 		(*in).DeepCopyInto(*out)
+	}
+	if in.RelabelOutputConfig != nil {
+		in, out := &in.RelabelOutputConfig, &out.RelabelOutputConfig
+		*out = new(output.RelabelOutputConfig)
+		**out = **in
 	}
 }
 

@@ -1,4 +1,4 @@
-// Copyright © 2021 Banzai Cloud
+// Copyright © 2021 Cisco Systems, Inc. and/or its affiliates
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,17 +20,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/banzaicloud/logging-operator/pkg/sdk/resourcebuilder"
-	"github.com/banzaicloud/operator-tools/pkg/reconciler"
-	"github.com/banzaicloud/operator-tools/pkg/types"
-	"github.com/banzaicloud/operator-tools/pkg/utils"
+	"github.com/cisco-open/operator-tools/pkg/reconciler"
+	"github.com/cisco-open/operator-tools/pkg/types"
+	"github.com/cisco-open/operator-tools/pkg/utils"
 	"github.com/go-logr/logr"
 	logrtesting "github.com/go-logr/logr/testing"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/banzaicloud/logging-operator/e2e/common"
+	"github.com/kube-logging/logging-operator/pkg/sdk/resourcebuilder"
+
+	"github.com/kube-logging/logging-operator/e2e/common"
 )
 
 func LoggingOperator(t *testing.T, c common.Cluster, opts ...LoggingOperatorOption) {
@@ -41,9 +42,7 @@ func LoggingOperator(t *testing.T, c common.Cluster, opts ...LoggingOperatorOpti
 			},
 			Namespace: "default",
 		},
-		Logger: logrtesting.TestLogger{
-			T: t,
-		},
+		Logger: logrtesting.NewTestLogger(t),
 		Parent: &parentObject{
 			Name: "test",
 		},
@@ -52,7 +51,7 @@ func LoggingOperator(t *testing.T, c common.Cluster, opts ...LoggingOperatorOpti
 	}
 
 	if img := os.Getenv("LOGGING_OPERATOR_IMAGE"); img != "" {
-		require.NoError(t, c.LoadImages(img))
+		common.RequireNoError(t, c.LoadImages(img))
 
 		if options.Config.ContainerOverrides == nil {
 			options.Config.ContainerOverrides = new(types.ContainerBase)
@@ -65,15 +64,15 @@ func LoggingOperator(t *testing.T, c common.Cluster, opts ...LoggingOperatorOpti
 		opt.ApplyToLoggingOperatorOptions(&options)
 	}
 
-	resourceBuilders := resourcebuilder.ResourceBuilders(options.Parent, &options.Config)
+	resourceBuilders := resourcebuilder.ResourceBuildersWithReader(c.GetClient())(options.Parent, &options.Config)
 	reconciler := reconciler.NewGenericReconciler(c.GetClient(), options.Logger, reconciler.ReconcilerOpts{
 		Scheme: c.GetScheme(),
 	})
 	for _, rb := range resourceBuilders {
 		obj, ds, err := rb()
-		require.NoError(t, err)
+		common.RequireNoError(t, err)
 		res, err := reconciler.ReconcileResource(obj, ds)
-		require.NoError(t, err)
+		common.RequireNoError(t, err)
 		require.Nil(t, res)
 	}
 

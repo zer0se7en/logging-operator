@@ -1,4 +1,4 @@
-// Copyright © 2021 Banzai Cloud
+// Copyright © 2021 Cisco Systems, Inc. and/or its affiliates
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,16 +15,14 @@
 package nodeagent
 
 import (
+	"context"
 	"fmt"
 
 	"emperror.dev/errors"
-	"github.com/banzaicloud/logging-operator/pkg/resources"
-	"github.com/banzaicloud/logging-operator/pkg/resources/fluentddataprovider"
-	"github.com/banzaicloud/logging-operator/pkg/sdk/logging/api/v1beta1"
-	"github.com/banzaicloud/operator-tools/pkg/merge"
-	"github.com/banzaicloud/operator-tools/pkg/reconciler"
-	"github.com/banzaicloud/operator-tools/pkg/typeoverride"
-	util "github.com/banzaicloud/operator-tools/pkg/utils"
+	"github.com/cisco-open/operator-tools/pkg/merge"
+	"github.com/cisco-open/operator-tools/pkg/reconciler"
+	"github.com/cisco-open/operator-tools/pkg/typeoverride"
+	util "github.com/cisco-open/operator-tools/pkg/utils"
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -35,6 +33,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"github.com/kube-logging/logging-operator/pkg/resources"
+	"github.com/kube-logging/logging-operator/pkg/resources/loggingdataprovider"
+	"github.com/kube-logging/logging-operator/pkg/sdk/logging/api/v1beta1"
 )
 
 const (
@@ -48,8 +50,8 @@ const (
 	containerName                  = "fluent-bit"
 )
 
-func NodeAgentFluentbitDefaults(userDefined **v1beta1.NodeAgent) (*v1beta1.NodeAgent, error) {
-	programDefault := &v1beta1.NodeAgent{
+func NodeAgentFluentbitDefaults(userDefined v1beta1.NodeAgentConfig) (*v1beta1.NodeAgentConfig, error) {
+	programDefault := &v1beta1.NodeAgentConfig{
 		FluentbitSpec: &v1beta1.NodeAgentFluentbit{
 			DaemonSetOverrides: &typeoverride.DaemonSet{
 				Spec: typeoverride.DaemonSetSpec{
@@ -61,7 +63,7 @@ func NodeAgentFluentbitDefaults(userDefined **v1beta1.NodeAgent) (*v1beta1.NodeA
 							Containers: []v1.Container{
 								{
 									Name:            containerName,
-									Image:           "fluent/fluent-bit:1.8.12",
+									Image:           v1beta1.DefaultFluentbitImageRepository + ":" + v1beta1.DefaultFluentbitImageTag,
 									Command:         []string{"/fluent-bit/bin/fluent-bit", "-c", "/fluent-bit/conf_operator/fluent-bit.conf"},
 									ImagePullPolicy: v1.PullIfNotPresent,
 									Resources: v1.ResourceRequirements{
@@ -108,12 +110,11 @@ func NodeAgentFluentbitDefaults(userDefined **v1beta1.NodeAgent) (*v1beta1.NodeA
 			},
 		},
 	}
-	if (*userDefined).FluentbitSpec == nil {
-		(*userDefined).FluentbitSpec = &v1beta1.NodeAgentFluentbit{}
+	if userDefined.FluentbitSpec == nil {
+		userDefined.FluentbitSpec = &v1beta1.NodeAgentFluentbit{}
 	}
 
-	if (*userDefined).FluentbitSpec.FilterAws != nil {
-
+	if userDefined.FluentbitSpec.FilterAws != nil {
 		programDefault.FluentbitSpec.FilterAws = &v1beta1.FilterAws{
 			ImdsVersion:     "v2",
 			AZ:              util.BoolPointer(true),
@@ -127,14 +128,14 @@ func NodeAgentFluentbitDefaults(userDefined **v1beta1.NodeAgent) (*v1beta1.NodeA
 			Match:           "*",
 		}
 
-		err := merge.Merge(programDefault.FluentbitSpec.FilterAws, (*userDefined).FluentbitSpec.FilterAws)
+		err := merge.Merge(programDefault.FluentbitSpec.FilterAws, userDefined.FluentbitSpec.FilterAws)
 		if err != nil {
 			return nil, err
 		}
 
 	}
-	if (*userDefined).FluentbitSpec.LivenessDefaultCheck == nil || *(*userDefined).FluentbitSpec.LivenessDefaultCheck {
-		if (*userDefined).Profile != "windows" {
+	if userDefined.FluentbitSpec.LivenessDefaultCheck == nil || *userDefined.FluentbitSpec.LivenessDefaultCheck {
+		if userDefined.Profile != "windows" {
 			programDefault.FluentbitSpec.Metrics = &v1beta1.Metrics{
 				Port: 2020,
 				Path: "/",
@@ -142,7 +143,7 @@ func NodeAgentFluentbitDefaults(userDefined **v1beta1.NodeAgent) (*v1beta1.NodeA
 		}
 	}
 
-	if (*userDefined).FluentbitSpec.Metrics != nil {
+	if userDefined.FluentbitSpec.Metrics != nil {
 
 		programDefault.FluentbitSpec.Metrics = &v1beta1.Metrics{
 			Interval: "15s",
@@ -150,12 +151,12 @@ func NodeAgentFluentbitDefaults(userDefined **v1beta1.NodeAgent) (*v1beta1.NodeA
 			Port:     2020,
 			Path:     "/api/v1/metrics/prometheus",
 		}
-		err := merge.Merge(programDefault.FluentbitSpec.Metrics, (*userDefined).FluentbitSpec.Metrics)
+		err := merge.Merge(programDefault.FluentbitSpec.Metrics, userDefined.FluentbitSpec.Metrics)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if programDefault.FluentbitSpec.Metrics != nil && (*userDefined).FluentbitSpec.Metrics != nil && (*userDefined).FluentbitSpec.Metrics.PrometheusAnnotations {
+	if programDefault.FluentbitSpec.Metrics != nil && userDefined.FluentbitSpec.Metrics != nil && userDefined.FluentbitSpec.Metrics.PrometheusAnnotations {
 		defaultPrometheusAnnotations := &typeoverride.ObjectMeta{
 			Annotations: map[string]string{
 				"prometheus.io/scrape": "true",
@@ -170,7 +171,7 @@ func NodeAgentFluentbitDefaults(userDefined **v1beta1.NodeAgent) (*v1beta1.NodeA
 	}
 	if programDefault.FluentbitSpec.Metrics != nil {
 		defaultLivenessProbe := &v1.Probe{
-			Handler: v1.Handler{
+			ProbeHandler: v1.ProbeHandler{
 				HTTPGet: &v1.HTTPGetAction{
 					Path: programDefault.FluentbitSpec.Metrics.Path,
 					Port: intstr.IntOrString{
@@ -196,10 +197,10 @@ func NodeAgentFluentbitDefaults(userDefined **v1beta1.NodeAgent) (*v1beta1.NodeA
 	return programDefault, nil
 }
 
-var NodeAgentFluentbitWindowsDefaults = &v1beta1.NodeAgent{
+var NodeAgentFluentbitWindowsDefaults = &v1beta1.NodeAgentConfig{
 	FluentbitSpec: &v1beta1.NodeAgentFluentbit{
 		FilterKubernetes: v1beta1.FilterKubernetes{
-			KubeURL:       "https://kubernetes.default.svc.cluster.local:443",
+			KubeURL:       "https://kubernetes.default.svc:443",
 			KubeCAFile:    "c:\\var\\run\\secrets\\kubernetes.io\\serviceaccount\\ca.crt",
 			KubeTokenFile: "c:\\var\\run\\secrets\\kubernetes.io\\serviceaccount\\token",
 			KubeTagPrefix: "kubernetes.C.var.log.containers.",
@@ -236,7 +237,7 @@ var NodeAgentFluentbitWindowsDefaults = &v1beta1.NodeAgent{
 			}},
 	},
 }
-var NodeAgentFluentbitLinuxDefaults = &v1beta1.NodeAgent{
+var NodeAgentFluentbitLinuxDefaults = &v1beta1.NodeAgentConfig{
 	FluentbitSpec: &v1beta1.NodeAgentFluentbit{},
 }
 
@@ -247,7 +248,7 @@ func generateLoggingRefLabels(loggingRef string) map[string]string {
 func (n *nodeAgentInstance) getFluentBitLabels() map[string]string {
 	return util.MergeLabels(n.nodeAgent.Metadata.Labels, map[string]string{
 		"app.kubernetes.io/name":     "fluentbit",
-		"app.kubernetes.io/instance": n.nodeAgent.Name,
+		"app.kubernetes.io/instance": n.name,
 	}, generateLoggingRefLabels(n.logging.ObjectMeta.GetName()))
 }
 
@@ -258,96 +259,106 @@ func (n *nodeAgentInstance) getServiceAccount() string {
 	return n.QualifiedName(defaultServiceAccountName)
 }
 
-//
-//type DesiredObject struct {
-//	Object runtime.Object
-//	State  reconciler.DesiredState
-//}
+//	type DesiredObject struct {
+//		Object runtime.Object
+//		State  reconciler.DesiredState
+//	}
 //
 // Reconciler holds info what resource to reconcile
 type Reconciler struct {
 	Logging *v1beta1.Logging
 	*reconciler.GenericResourceReconciler
 	configs             map[string][]byte
-	fluentdDataProvider fluentddataprovider.FluentdDataProvider
+	agents              map[string]v1beta1.NodeAgentConfig
+	fluentdDataProvider loggingdataprovider.LoggingDataProvider
 }
 
-// NewReconciler creates a new NodeAgent reconciler
-func New(client client.Client, logger logr.Logger, logging *v1beta1.Logging, opts reconciler.ReconcilerOpts, fluentdDataProvider fluentddataprovider.FluentdDataProvider) *Reconciler {
+// New creates a new NodeAgent reconciler
+func New(client client.Client, logger logr.Logger, logging *v1beta1.Logging, agents map[string]v1beta1.NodeAgentConfig, opts reconciler.ReconcilerOpts, fluentdDataProvider loggingdataprovider.LoggingDataProvider) *Reconciler {
 	return &Reconciler{
 		Logging:                   logging,
 		GenericResourceReconciler: reconciler.NewGenericReconciler(client, logger, opts),
+		agents:                    agents,
 		fluentdDataProvider:       fluentdDataProvider,
 	}
 }
 
 type nodeAgentInstance struct {
-	nodeAgent           *v1beta1.NodeAgent
+	name                string
+	nodeAgent           *v1beta1.NodeAgentConfig
 	reconciler          *reconciler.GenericResourceReconciler
 	logging             *v1beta1.Logging
 	configs             map[string][]byte
-	fluentdDataProvider fluentddataprovider.FluentdDataProvider
+	loggingDataProvider loggingdataprovider.LoggingDataProvider
 }
 
-// Reconcile reconciles the NodeAgent resource
-func (r *Reconciler) Reconcile() (*reconcile.Result, error) {
-	for _, userDefinedAgent := range r.Logging.Spec.NodeAgents {
-		var instance nodeAgentInstance
-		NodeAgentFluentbitDefaults, err := NodeAgentFluentbitDefaults(&userDefinedAgent)
-		if err != nil {
-			return nil, err
-		}
-
-		switch userDefinedAgent.Profile {
-		case "windows":
-			err := merge.Merge(NodeAgentFluentbitDefaults, NodeAgentFluentbitWindowsDefaults)
-			if err != nil {
-				return nil, err
-			}
-		default:
-			err := merge.Merge(NodeAgentFluentbitDefaults, NodeAgentFluentbitLinuxDefaults)
-			if err != nil {
-				return nil, err
-			}
-
-		}
-		err = merge.Merge(NodeAgentFluentbitDefaults, &userDefinedAgent)
-		if err != nil {
-			return nil, err
-		}
-
-		instance = nodeAgentInstance{
-			nodeAgent:  NodeAgentFluentbitDefaults,
-			reconciler: r.GenericResourceReconciler,
-			logging:    r.Logging,
-		}
-
-		result, err := instance.Reconcile()
-		if err != nil {
-			return nil, errors.WrapWithDetails(err,
-				"failed to reconcile instances", "NodeName", userDefinedAgent.Name)
-		}
-		if result != nil {
-			return result, nil
-		}
+// Reconcile reconciles the InlineNodeAgent resource
+func (r *Reconciler) Reconcile(ctx context.Context) (*reconcile.Result, error) {
+	combinedResult := reconciler.CombinedResult{}
+	for name, userDefinedAgent := range r.agents {
+		result, err := r.processAgent(ctx, name, userDefinedAgent)
+		combinedResult.Combine(result, err)
 	}
-	return nil, nil
+	return &combinedResult.Result, combinedResult.Err
+}
+
+func (r *Reconciler) processAgent(ctx context.Context, name string, userDefinedAgent v1beta1.NodeAgentConfig) (*reconcile.Result, error) {
+	var instance nodeAgentInstance
+	NodeAgentFluentbitDefaults, err := NodeAgentFluentbitDefaults(userDefinedAgent)
+	if err != nil {
+		return nil, err
+	}
+
+	switch userDefinedAgent.Profile {
+	case "windows":
+		err := merge.Merge(NodeAgentFluentbitDefaults, NodeAgentFluentbitWindowsDefaults)
+		if err != nil {
+			return nil, err
+		}
+
+		// Overwrite Kubernetes endpoint with a ClusterDomain templated value.
+		NodeAgentFluentbitDefaults.FluentbitSpec.FilterKubernetes.KubeURL = fmt.Sprintf("https://kubernetes.default.svc%s:443", r.Logging.ClusterDomainAsSuffix())
+
+	default:
+		err := merge.Merge(NodeAgentFluentbitDefaults, NodeAgentFluentbitLinuxDefaults)
+		if err != nil {
+			return nil, err
+		}
+
+	}
+	err = merge.Merge(NodeAgentFluentbitDefaults, &userDefinedAgent)
+	if err != nil {
+		return nil, err
+	}
+
+	instance = nodeAgentInstance{
+		name:                name,
+		nodeAgent:           NodeAgentFluentbitDefaults,
+		reconciler:          r.GenericResourceReconciler,
+		logging:             r.Logging,
+		loggingDataProvider: r.fluentdDataProvider,
+	}
+
+	return instance.Reconcile(ctx)
 }
 
 // Reconcile reconciles the nodeAgentInstance resource
-func (n *nodeAgentInstance) Reconcile() (*reconcile.Result, error) {
-	for _, factory := range []resources.Resource{
+func (n *nodeAgentInstance) Reconcile(ctx context.Context) (*reconcile.Result, error) {
+	objects := []resources.Resource{
 		n.serviceAccount,
 		n.clusterRole,
 		n.clusterRoleBinding,
-		n.clusterPodSecurityPolicy,
-		n.pspClusterRole,
-		n.pspClusterRoleBinding,
 		n.configSecret,
 		n.daemonSet,
 		n.serviceMetrics,
-		n.monitorServiceMetrics,
-	} {
+	}
+	if resources.PSPEnabled {
+		objects = append(objects, n.clusterPodSecurityPolicy, n.pspClusterRole, n.pspClusterRoleBinding)
+	}
+	if resources.IsSupported(ctx, resources.ServiceMonitorKey) {
+		objects = append(objects, n.monitorServiceMetrics)
+	}
+	for _, factory := range objects {
 		o, state, err := factory()
 		if err != nil {
 			return nil, errors.WrapIf(err, "failed to create desired object")
@@ -379,7 +390,7 @@ func RegisterWatches(builder *builder.Builder) *builder.Builder {
 
 // nodeAgent QualifiedName
 func (n *nodeAgentInstance) QualifiedName(name string) string {
-	return fmt.Sprintf("%s-%s-%s", n.logging.Name, n.nodeAgent.Name, name)
+	return fmt.Sprintf("%s-%s-%s", n.logging.Name, n.name, name)
 }
 
 // nodeAgent FluentdQualifiedName
